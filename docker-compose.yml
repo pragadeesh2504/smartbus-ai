@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  smartbus-db:
+    image: postgres:15-alpine
+    container_name: smartbus-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-smartbus_db}
+      POSTGRES_USER: ${POSTGRES_USER:-smartbus_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartbus_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - smartbus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smartbus_user} -d ${POSTGRES_DB:-smartbus_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  smartbus-backend:
+    build:
+      context: ./smartbus-backend
+      dockerfile: Dockerfile
+    container_name: smartbus-backend
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://smartbus-db:5432/${POSTGRES_DB:-smartbus_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-smartbus_user}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-smartbus_password}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-3600000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:80,http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - smartbus-network
+    depends_on:
+      smartbus-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/api/actuator/health/readiness || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  smartbus-frontend:
+    build:
+      context: ./smartbus-frontend
+      dockerfile: Dockerfile
+    container_name: smartbus-frontend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - smartbus-network
+    depends_on:
+      smartbus-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+networks:
+  smartbus-network:
+    driver: bridge

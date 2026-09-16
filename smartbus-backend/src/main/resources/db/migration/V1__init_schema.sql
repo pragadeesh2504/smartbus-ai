@@ -1,0 +1,242 @@
+
+-- 1. USERS TABLE
+CREATE TABLE users (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    phone_number VARCHAR(20) NOT NULL,
+    role VARCHAR(30) NOT NULL, -- SUPER_ADMIN, ADMIN, DRIVER, STUDENT, TRANSPORT_MANAGER, SECURITY
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    failed_login_attempts INTEGER DEFAULT 0 NOT NULL,
+    lock_time TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_role ON users(role);
+
+-- 2. REFRESH TOKENS TABLE
+CREATE TABLE refresh_tokens (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) UNIQUE NOT NULL,
+    expiry_date TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
+
+-- 3. STUDENTS TABLE
+CREATE TABLE students (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    student_id VARCHAR(50) UNIQUE NOT NULL,
+    department VARCHAR(100) NOT NULL,
+    batch VARCHAR(20) NOT NULL
+);
+
+-- 4. DRIVERS TABLE
+CREATE TABLE drivers (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    license_number VARCHAR(50) UNIQUE NOT NULL,
+    is_approved BOOLEAN DEFAULT FALSE NOT NULL,
+    average_rating NUMERIC(3, 2) DEFAULT 5.00 NOT NULL,
+    status VARCHAR(30) DEFAULT 'AVAILABLE' NOT NULL -- AVAILABLE, ON_TRIP, INACTIVE
+);
+
+-- 5. BUSES TABLE
+CREATE TABLE buses (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    bus_number VARCHAR(30) UNIQUE NOT NULL,
+    model VARCHAR(100) NOT NULL,
+    capacity INTEGER NOT NULL,
+    status VARCHAR(30) DEFAULT 'ACTIVE' NOT NULL, -- ACTIVE, MAINTENANCE, INACTIVE
+    current_latitude NUMERIC(10, 8),
+    current_longitude NUMERIC(11, 8),
+    last_updated TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 6. ROUTES TABLE
+CREATE TABLE routes (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    route_name VARCHAR(100) UNIQUE NOT NULL,
+    start_point VARCHAR(100) NOT NULL,
+    end_point VARCHAR(100) NOT NULL,
+    distance NUMERIC(6, 2) NOT NULL, -- in km
+    estimated_duration_mins INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 7. STOPS TABLE
+CREATE TABLE stops (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    stop_name VARCHAR(100) UNIQUE NOT NULL,
+    latitude NUMERIC(10, 8) NOT NULL,
+    longitude NUMERIC(11, 8) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- 8. ROUTE STOPS TABLE (Junction Table)
+CREATE TABLE route_stops (
+    route_id UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+    stop_id UUID NOT NULL REFERENCES stops(id) ON DELETE CASCADE,
+    sequence_number INTEGER NOT NULL,
+    distance_from_start NUMERIC(6, 2) NOT NULL, -- in km
+    duration_from_start_mins INTEGER NOT NULL,
+    PRIMARY KEY (route_id, sequence_number)
+);
+
+CREATE INDEX idx_route_stops_route ON route_stops(route_id);
+
+-- 9. SCHEDULES TABLE
+CREATE TABLE schedules (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    route_id UUID NOT NULL REFERENCES routes(id),
+    bus_id UUID NOT NULL REFERENCES buses(id),
+    driver_id UUID NOT NULL REFERENCES drivers(id),
+    departure_time TIME NOT NULL,
+    arrival_time TIME NOT NULL,
+    days_of_week VARCHAR(100) NOT NULL, -- COMMA SEPARATED: MONDAY,TUESDAY etc.
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 10. TRIPS TABLE
+CREATE TABLE trips (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    schedule_id UUID REFERENCES schedules(id),
+    bus_id UUID NOT NULL REFERENCES buses(id),
+    driver_id UUID NOT NULL REFERENCES drivers(id),
+    route_id UUID NOT NULL REFERENCES routes(id),
+    status VARCHAR(30) DEFAULT 'SCHEDULED' NOT NULL, -- SCHEDULED, EN_ROUTE, PAUSED, COMPLETED, CANCELLED
+    start_time TIMESTAMP WITH TIME ZONE,
+    end_time TIMESTAMP WITH TIME ZONE,
+    actual_departure TIMESTAMP WITH TIME ZONE,
+    actual_arrival TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_trips_status ON trips(status);
+CREATE INDEX idx_trips_bus ON trips(bus_id);
+
+-- 11. GPS LOCATIONS TABLE
+CREATE TABLE gps_locations (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    latitude NUMERIC(10, 8) NOT NULL,
+    longitude NUMERIC(11, 8) NOT NULL,
+    speed NUMERIC(5, 2) NOT NULL, -- in km/h
+    heading NUMERIC(5, 2) NOT NULL, -- degrees (0-360)
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_gps_locations_trip_time ON gps_locations(trip_id, recorded_at DESC);
+
+-- 12. COMPLAINTS TABLE
+CREATE TABLE complaints (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id),
+    title VARCHAR(150) NOT NULL,
+    description TEXT NOT NULL,
+    status VARCHAR(30) DEFAULT 'PENDING' NOT NULL, -- PENDING, INVESTIGATING, RESOLVED, REJECTED
+    admin_remarks TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 13. FEEDBACK TABLE
+CREATE TABLE feedback (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id),
+    trip_id UUID NOT NULL REFERENCES trips(id),
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5) NOT NULL,
+    comments TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- 14. MAINTENANCE TABLE
+CREATE TABLE maintenance (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    bus_id UUID NOT NULL REFERENCES buses(id),
+    description TEXT NOT NULL,
+    cost NUMERIC(10, 2) NOT NULL,
+    status VARCHAR(30) DEFAULT 'SCHEDULED' NOT NULL, -- SCHEDULED, IN_PROGRESS, COMPLETED
+    scheduled_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    completed_date TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- 15. ATTENDANCE TABLE (QR Boarding support / Attendance)
+CREATE TABLE attendance (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    student_id UUID NOT NULL REFERENCES students(id),
+    trip_id UUID NOT NULL REFERENCES trips(id),
+    boarded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    boarding_stop_id UUID REFERENCES stops(id),
+    status VARCHAR(30) DEFAULT 'BOARDED' NOT NULL
+);
+
+-- 16. PASSENGER COUNTS TABLE
+CREATE TABLE passenger_counts (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    trip_id UUID NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    count INTEGER NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- 17. EMERGENCY LOGS TABLE (SOS triggers)
+CREATE TABLE emergency_logs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    trip_id UUID NOT NULL REFERENCES trips(id),
+    user_id UUID NOT NULL REFERENCES users(id),
+    type VARCHAR(50) NOT NULL, -- ACCIDENT, BREAKDOWN, MEDICAL, OTHER
+    description TEXT NOT NULL,
+    latitude NUMERIC(10, 8),
+    longitude NUMERIC(11, 8),
+    resolved BOOLEAN DEFAULT FALSE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- 18. AUDIT LOGS TABLE
+CREATE TABLE audit_logs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES users(id),
+    action VARCHAR(100) NOT NULL,
+    details TEXT NOT NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- 19. NOTIFICATIONS TABLE
+CREATE TABLE notifications (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE, -- NULL means broadcast to everyone
+    title VARCHAR(150) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(50) DEFAULT 'INFO' NOT NULL, -- INFO, ARRIVAL, DELAY, EMERGENCY
+    is_read BOOLEAN DEFAULT FALSE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+-- 20. SETTINGS TABLE
+CREATE TABLE settings (
+    setting_key VARCHAR(100) PRIMARY KEY,
+    setting_value VARCHAR(255) NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
+);

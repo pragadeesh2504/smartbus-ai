@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center">
+
+    <TextView
+        android:id="@+id/tvDriverName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Driver: Loading..."
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:id="@+id/tvTripStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Status: Idle"
+        android:textSize="16sp"
+        android:layout_marginBottom="24dp" />
+
+    <Button
+        android:id="@+id/btnToggleTrip"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Trip"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnSos"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="TRIGGER SOS ALARM"
+        android:backgroundTint="#D32F2F"
+        android:textColor="#FFFFFF" />
+
+</LinearLayout>

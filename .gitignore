@@ -1,0 +1,68 @@
+# Secrets and Environment Files
+.env
+.env.*
+!.env.example
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.jks
+*.keystore
+service-account*.json
+
+# Build Outputs & Package Distributions
+target/
+dist/
+build/
+*.jar
+*.war
+out/
+
+# Node & Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Test Coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Android Build & Local Caches
+.gradle/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Database Dumps & Local Data Files (Excludes migration scripts)
+*.dump
+*.backup
+*.rdb
+*.sqlite
+*.sqlite3
+*.db
+
+# IDE & Editor Files
+.idea/
+*.iml
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.bak
+.DS_Store
+Thumbs.db
+
+# Logs & Temporary Scratch Directories
+logs/
+*.log
+scratch/
+

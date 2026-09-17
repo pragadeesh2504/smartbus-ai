@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: smartbus-backend
+    env: docker
+    dockerContext: smartbus-backend
+    dockerfilePath: smartbus-backend/Dockerfile
+    plan: free
+    healthCheckPath: /api/actuator/health/readiness
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: SPRING_DATASOURCE_URL
+        placeholder: "jdbc:postgresql://<NEON_HOST>:5432/<NEON_DB>?sslmode=require"
+      - key: SPRING_DATASOURCE_USERNAME
+        placeholder: "<NEON_USER>"
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION
+        value: 3600000
+      - key: JWT_REFRESH_EXPIRATION
+        value: 604800000
+      - key: CORS_ALLOWED_ORIGINS
+        placeholder: "https://<VERCEL_APP_DOMAIN>"
+      - key: FRONTEND_URL
+        placeholder: "https://<VERCEL_APP_DOMAIN>"
+      - key: SEED_DEMO_DATA
+        value: "false"
+      - key: SMARTBUS_SIMULATION_ENABLED
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: SMARTBUS_LOG_LEVEL
+        value: INFO
+      - key: JAVA_OPTS
+        value: "-XX:+UseContainerSupport -Xmx256m -Xms128m -XX:MaxMetaspaceSize=128m -Xss512k -Djava.security.egd=file:/dev/./urandom"

@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   smartbus-db:
-    image: postgres:15-alpine
+    image: postgres:17-alpine
     container_name: smartbus-db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-smartbus_db}

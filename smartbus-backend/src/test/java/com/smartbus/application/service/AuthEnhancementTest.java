@@ -259,6 +259,15 @@ public class AuthEnhancementTest {
     }
 
     @Test
+    void testBCryptPasswordEncoder_MatchesSamplePassword() {
+        org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder encoder =
+                new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
+        String samplePassword = "SampleTestPassword@123";
+        String hash = encoder.encode(samplePassword);
+        assertTrue(encoder.matches(samplePassword, hash));
+    }
+
+    @Test
     void testLogin_Admin_PersonalEmail_Passes() {
         UserPrincipal principal = new UserPrincipal(activeAdminUser);
         Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
@@ -287,7 +296,7 @@ public class AuthEnhancementTest {
 
         LoginRequest req = LoginRequest.builder()
                 .email("superadmin@smartbus.com")
-                .password("Password123!")
+                .password("SuperAdmin@Test123")
                 .role("SUPER_ADMIN")
                 .build();
 
@@ -306,7 +315,7 @@ public class AuthEnhancementTest {
 
         LoginRequest req = LoginRequest.builder()
                 .email("superadmin@smartbus.com")
-                .password("Password123!")
+                .password("SuperAdmin@Test123")
                 .role("ADMIN") // Selected ADMIN on normal login
                 .build();
 

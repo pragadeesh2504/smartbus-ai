@@ -128,8 +128,11 @@ DELETE FROM drivers;
 -- LEVEL 6: Users — Delete all accounts EXCEPT the singleton SUPER_ADMIN
 DELETE FROM users WHERE role != 'SUPER_ADMIN';
 
--- Ensure SUPER_ADMIN college_id is NULL
-UPDATE users SET college_id = NULL WHERE role = 'SUPER_ADMIN';
+-- Password synchronization is handled by SuperAdminBootstrapService.
+UPDATE users
+SET college_id = NULL,
+    is_active = true
+WHERE role = 'SUPER_ADMIN' AND LOWER(email) = 'superadmin@smartbus.com';
 
 -- LEVEL 7: Colleges — Purge all colleges (now safe from FK constraints)
 DELETE FROM colleges;

@@ -37,6 +37,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 public class MultiCollegeTenantSecurityTest {
 
+    private static final String TEST_PASSWORD = "TestPassword@123";
+
     @Mock private CollegeRepository collegeRepository;
     @Mock private UserRepository userRepository;
     @Mock private StudentRepository studentRepository;
@@ -211,7 +213,7 @@ public class MultiCollegeTenantSecurityTest {
     void testStudentRegistrationWithValidCollegeCode() {
         RegisterRequest req = new RegisterRequest();
         req.setEmail("newstudent@cit.edu");
-        req.setPassword("Password123!");
+        req.setPassword(TEST_PASSWORD);
         req.setFirstName("Bob");
         req.setLastName("Jones");
         req.setRole("STUDENT");
@@ -241,7 +243,7 @@ public class MultiCollegeTenantSecurityTest {
     void testStudentRegistrationWithInvalidCollegeCode_Rejected() {
         RegisterRequest req = new RegisterRequest();
         req.setEmail("badstudent@domain.com");
-        req.setPassword("Password123!");
+        req.setPassword(TEST_PASSWORD);
         req.setRole("STUDENT");
         req.setCollegeCode("INVALID");
 
@@ -258,7 +260,7 @@ public class MultiCollegeTenantSecurityTest {
     void testStudentRegistrationWithInactiveCollege_Rejected() {
         RegisterRequest req = new RegisterRequest();
         req.setEmail("bob@cit.edu");
-        req.setPassword("Password123!");
+        req.setPassword(TEST_PASSWORD);
         req.setRole("STUDENT");
         req.setCollegeCode("CIT");
 
@@ -276,7 +278,7 @@ public class MultiCollegeTenantSecurityTest {
     void testStudentLoginWithValidCollegeCode_Success() {
         LoginRequest req = LoginRequest.builder()
                 .email("student@cit.edu")
-                .password("Password123!")
+                .password(TEST_PASSWORD)
                 .role("STUDENT")
                 .collegeCode("cit")
                 .build();
@@ -300,7 +302,7 @@ public class MultiCollegeTenantSecurityTest {
     void testCrossTenantStudentLogin_Rejected() {
         LoginRequest req = LoginRequest.builder()
                 .email("student@cit.edu")
-                .password("Password123!")
+                .password(TEST_PASSWORD)
                 .role("STUDENT")
                 .collegeCode("LOYOLA")
                 .build();
@@ -321,7 +323,7 @@ public class MultiCollegeTenantSecurityTest {
     void testIntraCollegeStudentIdUniqueness() {
         RegisterRequest req = new RegisterRequest();
         req.setEmail("dup@cit.edu");
-        req.setPassword("Password123!");
+        req.setPassword(TEST_PASSWORD);
         req.setRole("STUDENT");
         req.setStudentId("ROLL-001");
         req.setDepartment("CSE");
@@ -642,7 +644,7 @@ public class MultiCollegeTenantSecurityTest {
 
         LoginRequest oldLoginReq = LoginRequest.builder()
                 .email("student@cit.edu")
-                .password("Password123!")
+                .password(TEST_PASSWORD)
                 .role("STUDENT")
                 .collegeCode("CIT")
                 .build();
@@ -658,7 +660,7 @@ public class MultiCollegeTenantSecurityTest {
 
         LoginRequest newLoginReq = LoginRequest.builder()
                 .email("student@cit.edu")
-                .password("Password123!")
+                .password(TEST_PASSWORD)
                 .role("STUDENT")
                 .collegeCode("NEWCIT")
                 .build();
@@ -719,7 +721,7 @@ public class MultiCollegeTenantSecurityTest {
         when(collegeRepository.existsByNameIgnoreCase("College B")).thenReturn(false);
         when(collegeRepository.existsByCollegeCodeIgnoreCase("CLGB")).thenReturn(false);
         when(userRepository.existsByEmail("admin@collegeb.edu")).thenReturn(false);
-        when(passwordEncoder.encode("Password123!")).thenReturn("hashed_pass_b");
+        when(passwordEncoder.encode(TEST_PASSWORD)).thenReturn("hashed_pass_b");
         when(collegeRepository.save(any(College.class))).thenAnswer(i -> {
             College c = i.getArgument(0);
             c.setId(UUID.randomUUID());
@@ -737,7 +739,7 @@ public class MultiCollegeTenantSecurityTest {
                 .firstName("Admin")
                 .lastName("CollegeB")
                 .email("admin@collegeb.edu")
-                .password("Password123!")
+                .password(TEST_PASSWORD)
                 .phoneNumber("+919876543210")
                 .build();
 
@@ -770,7 +772,7 @@ public class MultiCollegeTenantSecurityTest {
                 .firstName("Another")
                 .lastName("Admin")
                 .email("another@cit.edu")
-                .password("Password123!")
+                .password(TEST_PASSWORD)
                 .build();
 
         BadRequestException exCode = assertThrows(BadRequestException.class, () ->
@@ -789,7 +791,7 @@ public class MultiCollegeTenantSecurityTest {
                 .firstName("New")
                 .lastName("Admin")
                 .email("admin@cit.edu")
-                .password("Password123!")
+                .password(TEST_PASSWORD)
                 .build();
 
         BadRequestException exEmail = assertThrows(BadRequestException.class, () ->
@@ -813,7 +815,7 @@ public class MultiCollegeTenantSecurityTest {
                 .firstName("Test")
                 .lastName("Admin")
                 .email("admin@test.edu")
-                .password("Password123!")
+                .password(TEST_PASSWORD)
                 .build();
 
         // Configure mocks for 5 successful registrations
@@ -986,7 +988,7 @@ public class MultiCollegeTenantSecurityTest {
     void testPublicRegistration_RejectsSuperAdminRole() {
         RegisterRequest req = new RegisterRequest();
         req.setEmail("hacker@smartbus.com");
-        req.setPassword("Password123!");
+        req.setPassword(TEST_PASSWORD);
         req.setRole("SUPER_ADMIN");
         req.setFirstName("Hacker");
         req.setLastName("User");
@@ -1001,7 +1003,7 @@ public class MultiCollegeTenantSecurityTest {
     void testPublicRegistration_RejectsAdminRole() {
         RegisterRequest req = new RegisterRequest();
         req.setEmail("fakeadmin@smartbus.com");
-        req.setPassword("Password123!");
+        req.setPassword(TEST_PASSWORD);
         req.setRole("ADMIN");
         req.setFirstName("Fake");
         req.setLastName("Admin");
@@ -1016,7 +1018,7 @@ public class MultiCollegeTenantSecurityTest {
     void testPublicRegistration_RejectsDriverRole() {
         RegisterRequest req = new RegisterRequest();
         req.setEmail("unauthorized.driver@smartbus.com");
-        req.setPassword("Password123!");
+        req.setPassword(TEST_PASSWORD);
         req.setRole("DRIVER");
         req.setFirstName("Fake");
         req.setLastName("Driver");

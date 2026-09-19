@@ -34,6 +34,8 @@ public class AuthControllerTest {
     @InjectMocks
     private AuthController authController;
 
+    private static final String TEST_PASSWORD = "TestPassword@123";
+
     private LoginRequest loginRequest;
     private LoginResponse loginResponse;
 
@@ -41,7 +43,7 @@ public class AuthControllerTest {
     void setUp() {
         loginRequest = new LoginRequest();
         loginRequest.setEmail("driver@smartbus.ai");
-        loginRequest.setPassword("Password123!");
+        loginRequest.setPassword(TEST_PASSWORD);
 
         loginResponse = LoginResponse.builder()
                 .accessToken("access-token-123")
@@ -134,7 +136,7 @@ public class AuthControllerTest {
 
         LoginRequest saRequest = new LoginRequest();
         saRequest.setEmail("superadmin@smartbus.com");
-        saRequest.setPassword("Password123!");
+        saRequest.setPassword(TEST_PASSWORD);
 
         LoginResponse saResponse = LoginResponse.builder()
                 .accessToken("sa-jwt-token")

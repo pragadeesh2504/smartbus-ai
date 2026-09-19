@@ -72,6 +72,18 @@ public class SuperAdminBootstrapService implements ApplicationRunner {
             userRepository.save(superAdmin);
             log.info("Successfully bootstrapped single platform SuperAdmin account: {}", email);
         } else {
+            // If explicit SUPERADMIN_PASSWORD is provided in environment, sync credentials for the platform owner
+            if (configuredSuperAdminPassword != null && !configuredSuperAdminPassword.isBlank()) {
+                userRepository.findByEmailAndDeletedAtIsNull(email).ifPresent(sa -> {
+                    if (sa.getRole() == Role.SUPER_ADMIN && !passwordEncoder.matches(configuredSuperAdminPassword, sa.getPasswordHash())) {
+                        sa.setPasswordHash(passwordEncoder.encode(configuredSuperAdminPassword));
+                        sa.setCollege(null);
+                        sa.setActive(true);
+                        userRepository.save(sa);
+                        log.info("Synchronized existing SuperAdmin password from configured SUPERADMIN_PASSWORD.");
+                    }
+                });
+            }
             log.info("SuperAdmin account already exists. Preserving existing account and credentials.");
         }
     }

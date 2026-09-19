@@ -125,4 +125,31 @@ public class AuthControllerTest {
         assertEquals(200, response.getStatusCode().value());
         verify(authUseCase, times(1)).resetPasswordWithToken(resetReq);
     }
+
+    @Test
+    void testSuperAdminLogin_Success() {
+        when(request.getHeader("X-Forwarded-For")).thenReturn("192.168.1.50");
+        when(rateLimitService.checkLoginLimit("192.168.1.50", "superadmin@smartbus.com"))
+                .thenReturn(RateLimitResult.allow());
+
+        LoginRequest saRequest = new LoginRequest();
+        saRequest.setEmail("superadmin@smartbus.com");
+        saRequest.setPassword("Password123!");
+
+        LoginResponse saResponse = LoginResponse.builder()
+                .accessToken("sa-jwt-token")
+                .refreshToken("sa-refresh-token")
+                .role("SUPER_ADMIN")
+                .name("Platform SuperAdmin")
+                .build();
+
+        when(authUseCase.login(any(LoginRequest.class))).thenReturn(saResponse);
+
+        ResponseEntity<LoginResponse> response = authController.authenticateSuperAdmin(saRequest, request);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals("SUPER_ADMIN", response.getBody().getRole());
+        assertEquals("SUPER_ADMIN", saRequest.getRole());
+        verify(authUseCase, times(1)).login(saRequest);
+    }
 }

@@ -30,10 +30,10 @@ export function setupAxiosInterceptors() {
       const url = error.config?.url || '';
 
       if (status === 401) {
-        const isAuthEndpoint = url.includes('/api/auth/login') || url.includes('/api/auth/register');
-        const isLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login';
+        const isAuthEndpoint = url.includes('/api/auth/login') || url.includes('/api/auth/register') || url.includes('/api/auth/super-admin/login');
+        const isLoginPage = typeof window !== 'undefined' && (window.location.pathname === '/login' || window.location.pathname === '/super-admin/login');
 
-        // Do not redirect if the failure happened during login/register or user is already on /login
+        // Do not redirect if the failure happened during login/register or user is already on a login page
         if (isAuthEndpoint || isLoginPage) {
           return Promise.reject(error);
         }
@@ -48,7 +48,10 @@ export function setupAxiosInterceptors() {
         if (!isRedirecting) {
           isRedirecting = true;
           window.dispatchEvent(new CustomEvent('smartbus:unauthorized'));
-          window.location.href = '/login';
+          const targetLogin = typeof window !== 'undefined' && window.location.pathname.startsWith('/super-admin')
+            ? '/super-admin/login'
+            : '/login';
+          window.location.href = targetLogin;
           setTimeout(() => {
             isRedirecting = false;
           }, 3000);

@@ -35,6 +35,19 @@ public class AuthController {
         return ResponseEntity.ok(authUseCase.login(loginRequest));
     }
 
+    @PostMapping("/super-admin/login")
+    public ResponseEntity<LoginResponse> authenticateSuperAdmin(
+            @Valid @RequestBody LoginRequest loginRequest,
+            HttpServletRequest request) {
+        loginRequest.setRole("SUPER_ADMIN");
+        String clientIp = getClientIp(request);
+        RateLimitResult rateLimitResult = rateLimitService.checkLoginLimit(clientIp, loginRequest.getEmail());
+        if (!rateLimitResult.isAllowed()) {
+            throw new RateLimitExceededException("Too many login attempts. Please try again later.", rateLimitResult.getRetryAfterSeconds());
+        }
+        return ResponseEntity.ok(authUseCase.login(loginRequest));
+    }
+
     @PostMapping("/google")
     public ResponseEntity<LoginResponse> authenticateGoogleUser(
             @Valid @RequestBody com.smartbus.infrastructure.dto.GoogleLoginRequest googleRequest,

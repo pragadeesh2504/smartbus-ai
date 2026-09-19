@@ -70,7 +70,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string, role?: string, collegeCode?: string) => {
-    const res = await axios.post('/api/auth/login', {
+    const endpoint = role === 'SUPER_ADMIN' ? '/api/auth/super-admin/login' : '/api/auth/login';
+    const res = await axios.post(endpoint, {
       email,
       password,
       role,

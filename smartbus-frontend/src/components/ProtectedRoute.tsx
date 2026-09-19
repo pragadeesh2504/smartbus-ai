@@ -22,11 +22,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
   }
 
   if (!accessToken || !user) {
+    if (allowedRoles?.includes('SUPER_ADMIN') && !allowedRoles?.includes('ADMIN')) {
+      return <Navigate to="/super-admin/login" replace />;
+    }
     return <Navigate to="/login" replace />;
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     // Redirect based on role if unauthorized
+    if (user.role === 'SUPER_ADMIN') return <Navigate to="/super-admin" replace />;
     if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
     if (user.role === 'DRIVER') return <Navigate to="/driver" replace />;
     return <Navigate to="/student" replace />;

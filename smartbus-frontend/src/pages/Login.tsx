@@ -270,6 +270,16 @@ export const Login: React.FC = () => {
             </div>
           )}
         </div>
+
+        <div className="mt-4 pt-3 border-t border-brandBorder/60 text-center">
+          <Link
+            to="/super-admin/login"
+            className="inline-flex items-center justify-center gap-1.5 text-[11px] text-slate-500 hover:text-indigo-600 font-medium transition-colors"
+          >
+            <Shield className="w-3 h-3 text-slate-400" />
+            <span>Platform Super Admin? Sign in to Platform Portal &rarr;</span>
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -70,11 +70,11 @@ public class AuthService implements AuthUseCase {
         if (loginRequest.getRole() != null && !loginRequest.getRole().isBlank()) {
             String selectedRole = loginRequest.getRole().trim().toUpperCase();
             String storedRole = user.getRole().name();
-            // Handle ADMIN / SUPER_ADMIN matching
-            boolean matches = storedRole.equalsIgnoreCase(selectedRole) ||
-                    (selectedRole.equals("ADMIN") && storedRole.equals("SUPER_ADMIN"));
-            if (!matches) {
+            if (!storedRole.equalsIgnoreCase(selectedRole)) {
                 log.warn("Login role mismatch for user {}: selected {}, stored {}", user.getEmail(), selectedRole, storedRole);
+                if ("SUPER_ADMIN".equalsIgnoreCase(storedRole)) {
+                    throw new BadRequestException("Access denied: Platform Super Admin accounts must sign in via the Super Admin portal (/super-admin/login).");
+                }
                 throw new BadRequestException("Access denied: The selected role does not match this account.");
             }
         }
@@ -158,10 +158,11 @@ public class AuthService implements AuthUseCase {
         if (selectedRole != null && !selectedRole.isBlank()) {
             String normalizedSelected = selectedRole.trim().toUpperCase();
             String storedRole = user.getRole().name();
-            boolean matches = storedRole.equalsIgnoreCase(normalizedSelected) ||
-                    (normalizedSelected.equals("ADMIN") && storedRole.equals("SUPER_ADMIN"));
-            if (!matches) {
+            if (!storedRole.equalsIgnoreCase(normalizedSelected)) {
                 log.warn("Google login role mismatch for user {}: selected {}, stored {}", email, normalizedSelected, storedRole);
+                if ("SUPER_ADMIN".equalsIgnoreCase(storedRole)) {
+                    throw new BadRequestException("Access denied: Platform Super Admin accounts must sign in via the Super Admin portal (/super-admin/login).");
+                }
                 throw new BadRequestException("Access denied: The selected role does not match this account.");
             }
         }

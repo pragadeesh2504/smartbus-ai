@@ -9,6 +9,7 @@ import { StudentPortal } from './pages/student/StudentPortal';
 import { AdminPortal } from './pages/admin/AdminPortal';
 import { DriverPortal } from './pages/driver/DriverPortal';
 import { SuperAdminPortal } from './pages/admin/SuperAdminPortal';
+import { SuperAdminLogin } from './pages/admin/SuperAdminLogin';
 import { StudentRegister } from './pages/StudentRegister';
 import { CollegeAdminRegister } from './pages/CollegeAdminRegister';
 
@@ -18,6 +19,7 @@ const App: React.FC = () => {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/super-admin/login" element={<SuperAdminLogin />} />
           <Route path="/register" element={<StudentRegister />} />
           <Route path="/register/college" element={<CollegeAdminRegister />} />
           <Route path="/register-college" element={<CollegeAdminRegister />} />

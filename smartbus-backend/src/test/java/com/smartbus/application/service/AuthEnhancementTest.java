@@ -80,6 +80,7 @@ public class AuthEnhancementTest {
     private AuthService authService;
 
     private User activeAdminUser;
+    private User activeSuperAdminUser;
     private User activeDriverUser;
     private User activeStudentUser;
     private User inactiveUser;
@@ -106,6 +107,18 @@ public class AuthEnhancementTest {
                 .role(Role.ADMIN)
                 .isActive(true)
                 .passwordHash("hashed_admin_pw")
+                .build();
+
+        activeSuperAdminUser = User.builder()
+                .id(UUID.randomUUID())
+                .email("superadmin@smartbus.com")
+                .firstName("Platform")
+                .lastName("SuperAdmin")
+                .phoneNumber("+919999999999")
+                .role(Role.SUPER_ADMIN)
+                .college(null)
+                .isActive(true)
+                .passwordHash("hashed_superadmin_pw")
                 .build();
 
         activeDriverUser = User.builder()
@@ -262,6 +275,78 @@ public class AuthEnhancementTest {
         LoginResponse resp = authService.login(req);
         assertNotNull(resp);
         assertEquals("ADMIN", resp.getRole());
+    }
+
+    @Test
+    void testLogin_SuperAdmin_CorrectCredentialsAndRole_Passes() {
+        UserPrincipal principal = new UserPrincipal(activeSuperAdminUser);
+        Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+        when(authenticationManager.authenticate(any())).thenReturn(auth);
+        when(tokenProvider.generateToken(auth)).thenReturn("jwt-superadmin");
+        when(refreshTokenRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        LoginRequest req = LoginRequest.builder()
+                .email("superadmin@smartbus.com")
+                .password("Password123!")
+                .role("SUPER_ADMIN")
+                .build();
+
+        LoginResponse resp = authService.login(req);
+        assertNotNull(resp);
+        assertEquals("jwt-superadmin", resp.getAccessToken());
+        assertEquals("SUPER_ADMIN", resp.getRole());
+        assertNull(resp.getCollegeId());
+    }
+
+    @Test
+    void testLogin_SuperAdmin_SelectedAdminRole_RejectsAndDirectsToSuperAdminLogin() {
+        UserPrincipal principal = new UserPrincipal(activeSuperAdminUser);
+        Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+        when(authenticationManager.authenticate(any())).thenReturn(auth);
+
+        LoginRequest req = LoginRequest.builder()
+                .email("superadmin@smartbus.com")
+                .password("Password123!")
+                .role("ADMIN") // Selected ADMIN on normal login
+                .build();
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () -> authService.login(req));
+        assertTrue(ex.getMessage().contains("Super Admin portal"));
+        verify(refreshTokenRepository, never()).deleteByUser(any());
+    }
+
+    @Test
+    void testLogin_Admin_SelectedSuperAdminRole_RejectsElevation() {
+        UserPrincipal principal = new UserPrincipal(activeAdminUser);
+        Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+        when(authenticationManager.authenticate(any())).thenReturn(auth);
+
+        LoginRequest req = LoginRequest.builder()
+                .email("admin.personal@gmail.com")
+                .password("Admin@123")
+                .role("SUPER_ADMIN") // Attempting elevation to SUPER_ADMIN
+                .build();
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () -> authService.login(req));
+        assertTrue(ex.getMessage().contains("selected role does not match"));
+        verify(refreshTokenRepository, never()).deleteByUser(any());
+    }
+
+    @Test
+    void testLogin_Student_SelectedSuperAdminRole_RejectsElevation() {
+        UserPrincipal principal = new UserPrincipal(activeStudentUser);
+        Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+        when(authenticationManager.authenticate(any())).thenReturn(auth);
+
+        LoginRequest req = LoginRequest.builder()
+                .email("student@college.edu")
+                .password("Student@123")
+                .role("SUPER_ADMIN") // Student attempting elevation to SUPER_ADMIN
+                .build();
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () -> authService.login(req));
+        assertTrue(ex.getMessage().contains("selected role does not match"));
+        verify(refreshTokenRepository, never()).deleteByUser(any());
     }
 
     // -------------------------------------------------------------

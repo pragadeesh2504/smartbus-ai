@@ -84,9 +84,11 @@ public class StudentPortalController {
             }
         }
         
-        // Fallback: if no preferred/favorite bus is active, check if there is ANY active trip in the system only if no preferred bus is configured
+        // Fallback: if no preferred/favorite bus is active, check if there is ANY active trip in the student's college only if no preferred bus is configured
         if (activeTrip == null && student.getPreferredBus() == null) {
-            List<Trip> activeTrips = tripRepository.findByStatusIn(Arrays.asList("IN_PROGRESS", "PAUSED"));
+            List<Trip> activeTrips = student.getCollege() != null
+                    ? tripRepository.findByCollegeIdAndStatusIn(student.getCollege().getId(), Arrays.asList("IN_PROGRESS", "PAUSED"))
+                    : tripRepository.findByStatusIn(Arrays.asList("IN_PROGRESS", "PAUSED"));
             if (!activeTrips.isEmpty()) {
                 activeTrip = activeTrips.get(0);
             }
@@ -211,7 +213,9 @@ public class StudentPortalController {
                 }
             }
             if (scheduledTrip == null) {
-                List<Schedule> allScheds = scheduleRepository.findByDeletedAtIsNull();
+                List<Schedule> allScheds = student.getCollege() != null
+                        ? scheduleRepository.findByCollegeIdAndDeletedAtIsNull(student.getCollege().getId())
+                        : scheduleRepository.findByDeletedAtIsNull();
                 if (!allScheds.isEmpty()) {
                     scheduledTrip = allScheds.get(0);
                 }
@@ -238,8 +242,10 @@ public class StudentPortalController {
             }
         }
 
-        // List other active buses
-        List<Trip> activeTrips = tripRepository.findByStatusIn(Arrays.asList("IN_PROGRESS", "PAUSED"));
+        // List other active buses in student's college
+        List<Trip> activeTrips = student.getCollege() != null
+                ? tripRepository.findByCollegeIdAndStatusIn(student.getCollege().getId(), Arrays.asList("IN_PROGRESS", "PAUSED"))
+                : tripRepository.findByStatusIn(Arrays.asList("IN_PROGRESS", "PAUSED"));
         List<OtherBusSummary> otherBuses = new ArrayList<>();
         for (Trip t : activeTrips) {
             if (activeTrip != null && t.getId().equals(activeTrip.getId())) {
@@ -267,23 +273,33 @@ public class StudentPortalController {
 
     @GetMapping("/buses")
     public ResponseEntity<List<StudentBusDetails>> getAllBuses() {
-        getAuthenticatedStudent();
-        List<Bus> buses = busRepository.findByDeletedAtIsNull();
+        Student student = getAuthenticatedStudent();
+        List<Bus> buses = student.getCollege() != null
+                ? busRepository.findByCollegeIdAndDeletedAtIsNull(student.getCollege().getId())
+                : busRepository.findByDeletedAtIsNull();
         List<StudentBusDetails> details = buses.stream().map(this::mapToStudentBusDetails).collect(Collectors.toList());
         return ResponseEntity.ok(details);
     }
 
     @GetMapping("/buses/{id}")
     public ResponseEntity<StudentBusDetails> getBusDetails(@PathVariable UUID id) {
-        getAuthenticatedStudent();
+        Student student = getAuthenticatedStudent();
         Bus bus = busRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Bus not found"));
+        if (student.getCollege() != null && (bus.getCollege() == null || !bus.getCollege().getId().equals(student.getCollege().getId()))) {
+            throw new ResourceNotFoundException("Bus not found");
+        }
         return ResponseEntity.ok(mapToStudentBusDetails(bus));
     }
 
     @GetMapping("/buses/{id}/stops")
     public ResponseEntity<List<RouteProgressResponse.StopInfo>> getBusStops(@PathVariable UUID id) {
-        getAuthenticatedStudent();
+        Student student = getAuthenticatedStudent();
+        Bus bus = busRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Bus not found"));
+        if (student.getCollege() != null && (bus.getCollege() == null || !bus.getCollege().getId().equals(student.getCollege().getId()))) {
+            throw new ResourceNotFoundException("Bus not found");
+        }
         // Check active trip first
         Optional<Trip> activeTrip = tripRepository.findByBusIdAndStatusIn(id, Arrays.asList("IN_PROGRESS", "PAUSED"));
         Route route = null;
@@ -314,9 +330,11 @@ public class StudentPortalController {
 
     @GetMapping("/buses/search")
     public ResponseEntity<List<StudentBusDetails>> searchBuses(@RequestParam(value = "q", defaultValue = "") String query) {
-        getAuthenticatedStudent();
+        Student student = getAuthenticatedStudent();
         String lowerQuery = query.toLowerCase().trim();
-        List<Bus> allBuses = busRepository.findByDeletedAtIsNull();
+        List<Bus> allBuses = student.getCollege() != null
+                ? busRepository.findByCollegeIdAndDeletedAtIsNull(student.getCollege().getId())
+                : busRepository.findByDeletedAtIsNull();
         
         List<Bus> filtered = allBuses.stream().filter(b -> {
             if (b.getBusNumber().toLowerCase().contains(lowerQuery)) return true;
@@ -342,15 +360,20 @@ public class StudentPortalController {
 
     @GetMapping("/routes")
     public ResponseEntity<List<Route>> getRoutes() {
-        getAuthenticatedStudent();
-        return ResponseEntity.ok(routeRepository.findByDeletedAtIsNull());
+        Student student = getAuthenticatedStudent();
+        return ResponseEntity.ok(student.getCollege() != null
+                ? routeRepository.findByCollegeIdAndDeletedAtIsNull(student.getCollege().getId())
+                : routeRepository.findByDeletedAtIsNull());
     }
 
     @GetMapping("/routes/{id}")
     public ResponseEntity<StudentRouteDetails> getRouteDetails(@PathVariable UUID id) {
-        getAuthenticatedStudent();
+        Student student = getAuthenticatedStudent();
         Route route = routeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+        if (student.getCollege() != null && (route.getCollege() == null || !route.getCollege().getId().equals(student.getCollege().getId()))) {
+            throw new ResourceNotFoundException("Route not found");
+        }
 
         List<RouteStop> rStops = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(route.getId());
         List<RouteProgressResponse.StopInfo> stops = rStops.stream().map(rs -> RouteProgressResponse.StopInfo.builder()
@@ -381,9 +404,13 @@ public class StudentPortalController {
 
     @GetMapping("/live/{busId}")
     public ResponseEntity<LiveBusLocationResponse> getLiveBusLocation(@PathVariable UUID busId) {
-        getAuthenticatedStudent();
+        Student student = getAuthenticatedStudent();
         Trip trip = tripRepository.findByBusIdAndStatusIn(busId, Arrays.asList("IN_PROGRESS", "PAUSED"))
                 .orElseThrow(() -> new BadRequestException("Bus is not currently on a trip."));
+
+        if (student.getCollege() != null && (trip.getBus().getCollege() == null || !trip.getBus().getCollege().getId().equals(student.getCollege().getId()))) {
+            throw new ResourceNotFoundException("Bus not found");
+        }
 
         Bus bus = trip.getBus();
         com.smartbus.infrastructure.dto.EtaResponse etaResp = etaCalculationService.calculateBusEta(busId, null);
@@ -504,6 +531,9 @@ public class StudentPortalController {
         Student student = getAuthenticatedStudent();
         Bus bus = busRepository.findById(busId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bus not found"));
+        if (student.getCollege() != null && (bus.getCollege() == null || !bus.getCollege().getId().equals(student.getCollege().getId()))) {
+            throw new ResourceNotFoundException("Bus not found");
+        }
 
         student.getFavoriteBuses().add(bus);
         studentRepository.save(student);
@@ -527,6 +557,9 @@ public class StudentPortalController {
         Student student = getAuthenticatedStudent();
         Bus bus = busRepository.findById(busId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bus not found"));
+        if (student.getCollege() != null && (bus.getCollege() == null || !bus.getCollege().getId().equals(student.getCollege().getId()))) {
+            throw new ResourceNotFoundException("Bus not found");
+        }
 
         student.getFavoriteBuses().remove(bus);
         studentRepository.save(student);
@@ -606,6 +639,9 @@ public class StudentPortalController {
         UUID stopId = UUID.fromString(request.get("stopId"));
         Stop stop = stopRepository.findById(stopId)
                 .orElseThrow(() -> new ResourceNotFoundException("Stop not found"));
+        if (student.getCollege() != null && (stop.getCollege() == null || !stop.getCollege().getId().equals(student.getCollege().getId()))) {
+            throw new ResourceNotFoundException("Stop not found");
+        }
 
         student.setPreferredStop(stop);
         studentRepository.save(student);
@@ -629,6 +665,9 @@ public class StudentPortalController {
         Student student = getAuthenticatedStudent();
         Stop stop = stopRepository.findById(stopId)
                 .orElseThrow(() -> new ResourceNotFoundException("Stop not found"));
+        if (student.getCollege() != null && (stop.getCollege() == null || !stop.getCollege().getId().equals(student.getCollege().getId()))) {
+            throw new ResourceNotFoundException("Stop not found");
+        }
 
         student.setPreferredStop(stop);
         studentRepository.save(student);
@@ -686,6 +725,9 @@ public class StudentPortalController {
         if (reqRouteId != null) {
             route = routeRepository.findById(reqRouteId)
                     .orElseThrow(() -> new BadRequestException("Route not found"));
+            if (student.getCollege() != null && (route.getCollege() == null || !route.getCollege().getId().equals(student.getCollege().getId()))) {
+                throw new BadRequestException("Route not found");
+            }
             if (route.getDeletedAt() != null || (route.getStatus() != null && !"ACTIVE".equalsIgnoreCase(route.getStatus()))) {
                 throw new BadRequestException("Selected route is inactive");
             }
@@ -695,6 +737,9 @@ public class StudentPortalController {
         if (reqBusId != null) {
             bus = busRepository.findById(reqBusId)
                     .orElseThrow(() -> new BadRequestException("Bus not found"));
+            if (student.getCollege() != null && (bus.getCollege() == null || !bus.getCollege().getId().equals(student.getCollege().getId()))) {
+                throw new BadRequestException("Bus not found");
+            }
             if (bus.getDeletedAt() != null || (bus.getStatus() != null && !"ACTIVE".equalsIgnoreCase(bus.getStatus()))) {
                 throw new BadRequestException("Selected bus is inactive");
             }
@@ -713,6 +758,9 @@ public class StudentPortalController {
         if (reqStopId != null) {
             stop = stopRepository.findById(reqStopId)
                     .orElseThrow(() -> new BadRequestException("Stop not found"));
+            if (student.getCollege() != null && (stop.getCollege() == null || !stop.getCollege().getId().equals(student.getCollege().getId()))) {
+                throw new BadRequestException("Stop not found");
+            }
             if (route != null) {
                 final UUID finalStopId = stop.getId();
                 List<RouteStop> rStops = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(route.getId());
@@ -770,16 +818,20 @@ public class StudentPortalController {
 
     @GetMapping("/schedules")
     public ResponseEntity<List<StudentScheduleItem>> getSchedules() {
-        getAuthenticatedStudent();
+        Student student = getAuthenticatedStudent();
 
-        List<Schedule> allScheds = scheduleRepository.findByDeletedAtIsNull();
+        List<Schedule> allScheds = student.getCollege() != null
+                ? scheduleRepository.findByCollegeIdAndDeletedAtIsNull(student.getCollege().getId())
+                : scheduleRepository.findByDeletedAtIsNull();
         // Filter to active schedules with non-deleted bus and route
         List<Schedule> activeScheds = allScheds.stream()
                 .filter(s -> "ACTIVE".equalsIgnoreCase(s.getStatus()) && s.getBus() != null && s.getRoute() != null)
                 .filter(s -> s.getBus().getDeletedAt() == null && s.getRoute().getDeletedAt() == null)
                 .collect(Collectors.toList());
 
-        List<Trip> activeTrips = tripRepository.findByStatusIn(Arrays.asList("IN_PROGRESS", "PAUSED"));
+        List<Trip> activeTrips = student.getCollege() != null
+                ? tripRepository.findByCollegeIdAndStatusIn(student.getCollege().getId(), Arrays.asList("IN_PROGRESS", "PAUSED"))
+                : tripRepository.findByStatusIn(Arrays.asList("IN_PROGRESS", "PAUSED"));
         Map<UUID, Trip> activeTripsByBus = new HashMap<>();
         Map<UUID, Trip> activeTripsBySchedule = new HashMap<>();
         for (Trip t : activeTrips) {
@@ -849,7 +901,9 @@ public class StudentPortalController {
     @GetMapping("/stops/nearby")
     public ResponseEntity<List<NearbyStopResponse>> getNearbyStops() {
         Student student = getAuthenticatedStudent();
-        List<Stop> stops = stopRepository.findAll();
+        List<Stop> stops = student.getCollege() != null
+                ? stopRepository.findByCollegeId(student.getCollege().getId())
+                : stopRepository.findAll();
         
         if (student.getHomeLatitude() == null || student.getHomeLongitude() == null) {
             // If no home location set, return default empty list
@@ -961,10 +1015,17 @@ public class StudentPortalController {
     }
 
     private StudentProfileResponse mapToStudentProfileResponse(Student s) {
+        UUID collegeId = s.getCollege() != null ? s.getCollege().getId() : (s.getUser().getCollege() != null ? s.getUser().getCollege().getId() : null);
+        String collegeName = s.getCollege() != null ? s.getCollege().getName() : (s.getUser().getCollege() != null ? s.getUser().getCollege().getName() : null);
+        String collegeCode = s.getCollege() != null ? s.getCollege().getCollegeCode() : (s.getUser().getCollege() != null ? s.getUser().getCollege().getCollegeCode() : null);
+
         return StudentProfileResponse.builder()
                 .id(s.getId())
                 .userId(s.getUser().getId())
                 .collegeEmail(s.getUser().getEmail())
+                .collegeId(collegeId)
+                .collegeName(collegeName)
+                .collegeCode(collegeCode)
                 .name(s.getUser().getFirstName() + " " + s.getUser().getLastName())
                 .registerNumber(s.getRegisterNumber() != null ? s.getRegisterNumber() : s.getStudentId())
                 .department(s.getDepartment())
@@ -1115,6 +1176,9 @@ public class StudentPortalController {
         private UUID id;
         private UUID userId;
         private String collegeEmail;
+        private UUID collegeId;
+        private String collegeName;
+        private String collegeCode;
         private String name;
         private String registerNumber;
         private String department;

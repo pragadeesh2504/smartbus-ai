@@ -161,6 +161,15 @@ public class RateLimitService {
     }
 
     /**
+     * Check rate limit for college admin self-registration submissions (keyed by IP).
+     * Limit: 5 requests per minute per IP to prevent registration flooding.
+     */
+    public RateLimitResult checkAdminRegistrationLimit(String clientIp) {
+        String safeIp = (clientIp != null && !clientIp.isBlank()) ? clientIp.trim() : "unknown";
+        return tryConsume("admin_reg:ip:" + safeIp, 5, 60);
+    }
+
+    /**
      * Scheduled cleanup of stale buckets every 60 seconds.
      */
     @Scheduled(fixedRate = 60000)

@@ -14,4 +14,7 @@ public class LoginResponse {
     private String email;
     private String role;
     private String name;
+    private java.util.UUID collegeId;
+    private String collegeName;
+    private String collegeCode;
 }

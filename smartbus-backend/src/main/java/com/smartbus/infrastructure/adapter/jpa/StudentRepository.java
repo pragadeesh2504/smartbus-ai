@@ -15,4 +15,9 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
 
     @org.springframework.data.jpa.repository.Query("SELECT s FROM Student s JOIN s.favoriteBuses b WHERE b.id = :busId")
     java.util.List<Student> findStudentsByFavoriteBusId(@org.springframework.data.repository.query.Param("busId") UUID busId);
+
+    java.util.Optional<Student> findByCollegeIdAndStudentId(UUID collegeId, String studentId);
+    java.util.List<Student> findByCollegeId(UUID collegeId);
+    long countByCollegeId(UUID collegeId);
+    boolean existsByCollegeIdAndStudentId(UUID collegeId, String studentId);
 }

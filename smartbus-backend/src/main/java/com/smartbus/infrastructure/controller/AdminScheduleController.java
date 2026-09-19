@@ -51,15 +51,32 @@ public class AdminScheduleController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "departureTime") String sortBy,
-            @RequestParam(defaultValue = "ASC") String direction) {
+            @RequestParam(defaultValue = "ASC") String direction,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Sort sort = Sort.by(Sort.Direction.fromString(direction), sortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<Schedule> schedulesPage = scheduleRepository.findByDeletedAtIsNull(pageable);
+        Page<Schedule> schedulesPage;
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            schedulesPage = scheduleRepository.findByCollegeIdAndDeletedAtIsNull(userPrincipal.getCollegeId(), pageable);
+        } else {
+            schedulesPage = scheduleRepository.findByDeletedAtIsNull(pageable);
+        }
         Page<ScheduleDto> dtosPage = schedulesPage.map(scheduleMapper::toDto);
 
         return ResponseEntity.ok(ApiResponse.success("Schedules loaded successfully", dtosPage));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<ScheduleDto>> getScheduleById(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        Schedule schedule = scheduleRepository.findById(id)
+                .filter(s -> s.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found with id: " + id));
+        validateScheduleBelongsToCollege(schedule, userPrincipal);
+        return ResponseEntity.ok(ApiResponse.success("Schedule loaded", scheduleMapper.toDto(schedule)));
     }
 
     @PostMapping
@@ -67,7 +84,7 @@ public class AdminScheduleController {
             @RequestBody ScheduleDto scheduleDto,
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
-        Schedule schedule = validateAndBuildSchedule(null, scheduleDto);
+        Schedule schedule = validateAndBuildSchedule(null, scheduleDto, userPrincipal);
         Schedule saved = scheduleRepository.save(schedule);
 
         // Synchronize BusAssignment
@@ -79,6 +96,7 @@ public class AdminScheduleController {
                         .driver(saved.getDriver())
                         .route(saved.getRoute())
                         .schedule(saved)
+                        .college(saved.getCollege())
                         .status("ACTIVE")
                         .build();
                 busAssignmentRepository.save(assignment);
@@ -107,9 +125,10 @@ public class AdminScheduleController {
 
         Schedule existing = scheduleRepository.findById(id)
                 .filter(s -> s.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found with id: " + id));
+        validateScheduleBelongsToCollege(existing, userPrincipal);
 
-        Schedule updated = validateAndBuildSchedule(id, scheduleDto);
+        Schedule updated = validateAndBuildSchedule(id, scheduleDto, userPrincipal);
         updated.setId(id);
         Schedule saved = scheduleRepository.save(updated);
 
@@ -120,6 +139,7 @@ public class AdminScheduleController {
             a.setBus(saved.getBus());
             a.setDriver(saved.getDriver());
             a.setRoute(saved.getRoute());
+            a.setCollege(saved.getCollege());
             a.setStatus("ACTIVE".equalsIgnoreCase(saved.getStatus()) ? "ACTIVE" : "RELEASED");
             busAssignmentRepository.save(a);
         } else if ("ACTIVE".equalsIgnoreCase(saved.getStatus())) {
@@ -128,6 +148,7 @@ public class AdminScheduleController {
                     .driver(saved.getDriver())
                     .route(saved.getRoute())
                     .schedule(saved)
+                    .college(saved.getCollege())
                     .status("ACTIVE")
                     .build();
             busAssignmentRepository.save(assignment);
@@ -155,7 +176,8 @@ public class AdminScheduleController {
 
         Schedule schedule = scheduleRepository.findById(id)
                 .filter(s -> s.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found with id: " + id));
+        validateScheduleBelongsToCollege(schedule, userPrincipal);
 
         String oldStatus = schedule.getStatus();
         schedule.setStatus(status.toUpperCase());
@@ -165,6 +187,7 @@ public class AdminScheduleController {
         Optional<BusAssignment> existingAssignment = busAssignmentRepository.findFirstByScheduleId(saved.getId());
         if (existingAssignment.isPresent()) {
             BusAssignment a = existingAssignment.get();
+            a.setCollege(saved.getCollege());
             a.setStatus("ACTIVE".equalsIgnoreCase(status) ? "ACTIVE" : "RELEASED");
             busAssignmentRepository.save(a);
         } else if ("ACTIVE".equalsIgnoreCase(status)) {
@@ -173,6 +196,7 @@ public class AdminScheduleController {
                     .driver(saved.getDriver())
                     .route(saved.getRoute())
                     .schedule(saved)
+                    .college(saved.getCollege())
                     .status("ACTIVE")
                     .build();
             busAssignmentRepository.save(assignment);
@@ -200,7 +224,8 @@ public class AdminScheduleController {
 
         Schedule schedule = scheduleRepository.findById(id)
                 .filter(s -> s.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Schedule not found with id: " + id));
+        validateScheduleBelongsToCollege(schedule, userPrincipal);
 
         // 1. Active Trip Protection: return 409 Conflict if active
         List<Trip> scheduleTrips = tripRepository.findByScheduleId(id);
@@ -265,7 +290,7 @@ public class AdminScheduleController {
         return ResponseEntity.ok(ApiResponse.success("Schedule and dependent assignments deleted successfully", null));
     }
 
-    private Schedule validateAndBuildSchedule(UUID editId, ScheduleDto dto) {
+    private Schedule validateAndBuildSchedule(UUID editId, ScheduleDto dto, UserPrincipal userPrincipal) {
         Bus bus = busRepository.findById(dto.getBusId())
                 .orElseThrow(() -> new ResourceNotFoundException("Bus not found"));
 
@@ -274,6 +299,33 @@ public class AdminScheduleController {
 
         Route route = routeRepository.findById(dto.getRouteId())
                 .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+
+        // Tenant ownership and cross-college isolation validation
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            UUID adminCollegeId = userPrincipal.getCollegeId();
+            if (bus.getCollege() == null || !adminCollegeId.equals(bus.getCollege().getId())) {
+                throw new BadRequestException("Bus does not belong to your college.");
+            }
+            if (driver.getCollege() == null || !adminCollegeId.equals(driver.getCollege().getId())) {
+                throw new BadRequestException("Driver does not belong to your college.");
+            }
+            if (route.getCollege() == null || !adminCollegeId.equals(route.getCollege().getId())) {
+                throw new BadRequestException("Route does not belong to your college.");
+            }
+        }
+
+        // Cross-college combination safety check
+        if (bus.getCollege() != null && driver.getCollege() != null && !bus.getCollege().getId().equals(driver.getCollege().getId())) {
+            throw new BadRequestException("Cross-college scheduling is not permitted: Bus and Driver belong to different colleges.");
+        }
+        if (bus.getCollege() != null && route.getCollege() != null && !bus.getCollege().getId().equals(route.getCollege().getId())) {
+            throw new BadRequestException("Cross-college scheduling is not permitted: Bus and Route belong to different colleges.");
+        }
+        if (driver.getCollege() != null && route.getCollege() != null && !driver.getCollege().getId().equals(route.getCollege().getId())) {
+            throw new BadRequestException("Cross-college scheduling is not permitted: Driver and Route belong to different colleges.");
+        }
+
+        com.smartbus.domain.model.College college = bus.getCollege() != null ? bus.getCollege() : (userPrincipal != null ? userPrincipal.getUser().getCollege() : null);
 
         // Entity status validations
         if ("INACTIVE".equalsIgnoreCase(bus.getStatus()) || "MAINTENANCE".equalsIgnoreCase(bus.getStatus())) {
@@ -329,6 +381,7 @@ public class AdminScheduleController {
                 .bus(bus)
                 .driver(driver)
                 .route(route)
+                .college(college)
                 .departureTime(newDep)
                 .arrivalTime(newArr)
                 .daysOfWeek(dto.getDaysOfWeek())
@@ -350,5 +403,13 @@ public class AdminScheduleController {
 
         // Time overlap: A start is before B end, and A end is after B start
         return newDep.isBefore(s.getArrivalTime()) && newArr.isAfter(s.getDepartureTime());
+    }
+
+    private void validateScheduleBelongsToCollege(Schedule schedule, UserPrincipal userPrincipal) {
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            if (schedule.getCollege() == null || !userPrincipal.getCollegeId().equals(schedule.getCollege().getId())) {
+                throw new ResourceNotFoundException("Schedule not found with id: " + schedule.getId());
+            }
+        }
     }
 }

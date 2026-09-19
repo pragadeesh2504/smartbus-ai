@@ -27,14 +27,21 @@ export function getReconnectDelay(retryAttempt: number): number {
  * and production same-origin deployment.
  */
 export function getWebSocketUrl(): string {
+  const token = localStorage.getItem('accessToken');
+  const collegeId = localStorage.getItem('collegeId');
+  const params = new URLSearchParams();
+  if (token) params.set('token', token);
+  if (collegeId) params.set('collegeId', collegeId);
+  const query = params.toString() ? `?${params.toString()}` : '';
+
   if (import.meta.env.VITE_WS_BASE_URL) {
     const base = import.meta.env.VITE_WS_BASE_URL.replace(/\/+$/, '');
-    return `${base}/ws/live`;
+    return `${base}/ws/live${query}`;
   }
   const loc = window.location;
   const wsProtocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsHost = loc.host === 'localhost:5173' ? 'localhost:8080' : loc.host;
-  return `${wsProtocol}//${wsHost}/ws/live`;
+  return `${wsProtocol}//${wsHost}/ws/live${query}`;
 }
 
 export interface SmartWebSocketOptions {
@@ -135,7 +142,17 @@ export class SmartWebSocketClient {
   }
 
   public addSubscription(sub: string | object): void {
-    const subStr = typeof sub === 'string' ? sub : JSON.stringify(sub);
+    let finalSub = sub;
+    if (typeof sub === 'object' && sub !== null) {
+      const token = localStorage.getItem('accessToken');
+      const collegeId = localStorage.getItem('collegeId');
+      finalSub = {
+        ...sub,
+        ...(token ? { token } : {}),
+        ...(collegeId ? { collegeId } : {})
+      };
+    }
+    const subStr = typeof finalSub === 'string' ? finalSub : JSON.stringify(finalSub);
     this.subscriptions.add(subStr);
     if (this.isConnected() && this.socket) {
       this.socket.send(subStr);

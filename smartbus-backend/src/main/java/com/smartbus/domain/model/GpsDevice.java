@@ -18,6 +18,10 @@ public class GpsDevice {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "college_id")
+    private College college;
+
     @Column(name = "device_id", nullable = false, unique = true)
     private String deviceId;
 

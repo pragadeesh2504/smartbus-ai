@@ -38,6 +38,7 @@ public class AuthService implements AuthUseCase {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailService emailService;
     private final GoogleAuthService googleAuthService;
+    private final CollegeRepository collegeRepository;
     
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
@@ -93,6 +94,20 @@ public class AuthService implements AuthUseCase {
             }
         }
 
+        // Student college validation check
+        if (user.getRole() == Role.STUDENT || (loginRequest.getRole() != null && "STUDENT".equalsIgnoreCase(loginRequest.getRole().trim()))) {
+            String code = loginRequest.getCollegeCode();
+            if (code == null || code.trim().isEmpty()) {
+                throw new BadRequestException("College Code is required for student login.");
+            }
+            College college = collegeRepository.findByCollegeCodeIgnoreCaseAndStatus(code.trim(), "ACTIVE")
+                    .orElseThrow(() -> new BadRequestException("Invalid or inactive College Code."));
+            if (user.getCollege() == null || !user.getCollege().getId().equals(college.getId())) {
+                log.warn("Cross-tenant student login rejected for user {} attempting college {}", user.getEmail(), code);
+                throw new BadRequestException("Invalid credentials: Account does not belong to the specified college.");
+            }
+        }
+
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = tokenProvider.generateToken(authentication);
 
@@ -108,16 +123,24 @@ public class AuthService implements AuthUseCase {
                 .email(userPrincipal.getUsername())
                 .role(user.getRole().name())
                 .name(user.getFirstName() + " " + user.getLastName())
+                .collegeId(user.getCollege() != null ? user.getCollege().getId() : null)
+                .collegeName(user.getCollege() != null ? user.getCollege().getName() : null)
+                .collegeCode(user.getCollege() != null ? user.getCollege().getCollegeCode() : null)
                 .build();
     }
 
     @Override
     public LoginResponse loginWithGoogle(String idToken) {
-        return loginWithGoogle(idToken, null);
+        return loginWithGoogle(idToken, null, null);
     }
 
     @Override
     public LoginResponse loginWithGoogle(String idToken, String selectedRole) {
+        return loginWithGoogle(idToken, selectedRole, null);
+    }
+
+    @Override
+    public LoginResponse loginWithGoogle(String idToken, String selectedRole, String collegeCode) {
         GoogleUserInfo googleUser = googleAuthService.verifyToken(idToken);
         if (googleUser == null || !googleUser.emailVerified()) {
             throw new BadRequestException("Google email is not verified or token is invalid");
@@ -143,6 +166,19 @@ public class AuthService implements AuthUseCase {
             }
         }
 
+        // Student college validation check
+        if (user.getRole() == Role.STUDENT || (selectedRole != null && "STUDENT".equalsIgnoreCase(selectedRole.trim()))) {
+            if (collegeCode == null || collegeCode.trim().isEmpty()) {
+                throw new BadRequestException("College Code is required for student Google login.");
+            }
+            College college = collegeRepository.findByCollegeCodeIgnoreCaseAndStatus(collegeCode.trim(), "ACTIVE")
+                    .orElseThrow(() -> new BadRequestException("Invalid or inactive College Code."));
+            if (user.getCollege() == null || !user.getCollege().getId().equals(college.getId())) {
+                log.warn("Cross-tenant student Google login rejected for user {} attempting college {}", user.getEmail(), collegeCode);
+                throw new BadRequestException("Invalid credentials: Account does not belong to the specified college.");
+            }
+        }
+
         // Driver approval and suspension policy check
         if (user.getRole() == Role.DRIVER) {
             Driver driver = driverRepository.findByUser(user)
@@ -161,8 +197,8 @@ public class AuthService implements AuthUseCase {
         // Delete existing refresh tokens for the user
         refreshTokenRepository.deleteByUser(user);
 
-        // Generate JWT token with existing stored role
-        String jwt = tokenProvider.generateTokenFromUsername(user.getEmail());
+        // Generate complete JWT token with userId, role, and collegeId
+        String jwt = tokenProvider.generateTokenForUser(user);
         RefreshToken refreshToken = createRefreshToken(user);
 
         log.info("Google authentication successful for user: {} with role: {}", user.getEmail(), user.getRole());
@@ -173,21 +209,39 @@ public class AuthService implements AuthUseCase {
                 .email(user.getEmail())
                 .role(user.getRole().name())
                 .name(user.getFirstName() + " " + user.getLastName())
+                .collegeId(user.getCollege() != null ? user.getCollege().getId() : null)
+                .collegeName(user.getCollege() != null ? user.getCollege().getName() : null)
+                .collegeCode(user.getCollege() != null ? user.getCollege().getCollegeCode() : null)
                 .build();
     }
 
     @Override
     public void register(RegisterRequest registerRequest) {
+        if (registerRequest == null) {
+            throw new BadRequestException("Registration request cannot be null");
+        }
+
+        // Hardening: Reject any attempt to register non-STUDENT roles via the public endpoint
+        if (registerRequest.getRole() != null && !registerRequest.getRole().isBlank()) {
+            String requestedRole = registerRequest.getRole().trim().toUpperCase();
+            if (!"STUDENT".equals(requestedRole)) {
+                log.warn("Public registration rejected attempted role escalation: {}", requestedRole);
+                throw new BadRequestException("Public self-registration is restricted to students only. College administrators must register at /register/college and drivers are provisioned by college administrators.");
+            }
+        }
+
         if (userRepository.existsByEmail(registerRequest.getEmail())) {
             throw new BadRequestException("Email address already in use!");
         }
 
-        Role roleVal;
-        try {
-            roleVal = Role.valueOf(registerRequest.getRole().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new BadRequestException("Invalid role specified. Supported: STUDENT, DRIVER");
+        Role roleVal = Role.STUDENT;
+
+        String collegeCode = registerRequest.getCollegeCode();
+        if (collegeCode == null || collegeCode.trim().isEmpty()) {
+            throw new BadRequestException("College Code is required for student registration");
         }
+        College college = collegeRepository.findByCollegeCodeIgnoreCaseAndStatus(collegeCode.trim(), "ACTIVE")
+                .orElseThrow(() -> new BadRequestException("Invalid or inactive College Code: " + collegeCode.trim()));
 
         User user = User.builder()
                 .email(registerRequest.getEmail())
@@ -196,34 +250,90 @@ public class AuthService implements AuthUseCase {
                 .lastName(registerRequest.getLastName())
                 .phoneNumber(registerRequest.getPhoneNumber())
                 .role(roleVal)
+                .college(college)
                 .isActive(true)
                 .build();
 
         User savedUser = userRepository.save(user);
 
-        if (roleVal == Role.STUDENT) {
-            if (registerRequest.getStudentId() == null || registerRequest.getDepartment() == null || registerRequest.getBatch() == null) {
-                throw new BadRequestException("Student fields (studentId, department, batch) are required for student registration");
-            }
-            Student student = Student.builder()
-                    .user(savedUser)
-                    .studentId(registerRequest.getStudentId())
-                    .department(registerRequest.getDepartment())
-                    .batch(registerRequest.getBatch())
-                    .build();
-            studentRepository.save(student);
-        } else if (roleVal == Role.DRIVER) {
-            if (registerRequest.getLicenseNumber() == null) {
-                throw new BadRequestException("License number is required for driver registration");
-            }
-            Driver driver = Driver.builder()
-                    .user(savedUser)
-                    .licenseNumber(registerRequest.getLicenseNumber())
-                    .isApproved(false) // requires admin approval
-                    .status("AVAILABLE")
-                    .build();
-            driverRepository.save(driver);
+        if (registerRequest.getStudentId() == null || registerRequest.getDepartment() == null || registerRequest.getBatch() == null) {
+            throw new BadRequestException("Student fields (studentId, department, batch) are required for student registration");
         }
+        if (studentRepository.existsByCollegeIdAndStudentId(college.getId(), registerRequest.getStudentId())) {
+            throw new BadRequestException("Student ID " + registerRequest.getStudentId() + " already exists in this college");
+        }
+        Student student = Student.builder()
+                .user(savedUser)
+                .college(college)
+                .studentId(registerRequest.getStudentId())
+                .department(registerRequest.getDepartment())
+                .batch(registerRequest.getBatch())
+                .build();
+        studentRepository.save(student);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void registerCollegeAdmin(RegisterCollegeAdminRequest request) {
+        if (request == null) {
+            throw new BadRequestException("Registration request cannot be null");
+        }
+
+        String collegeName = request.getCollegeName() != null ? request.getCollegeName().trim() : "";
+        if (collegeName.length() < 2 || collegeName.length() > 150) {
+            throw new BadRequestException("College name must be between 2 and 150 characters");
+        }
+
+        String rawCode = request.getCollegeCode();
+        if (rawCode == null || rawCode.trim().isEmpty()) {
+            throw new BadRequestException("College code is required");
+        }
+        String collegeCode = rawCode.trim().toUpperCase();
+        if (!collegeCode.matches("^[A-Za-z0-9_-]{2,20}$")) {
+            throw new BadRequestException("College code must be 2 to 20 characters (alphanumeric, dashes, underscores only)");
+        }
+
+        String email = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+        if (email.isEmpty()) {
+            throw new BadRequestException("Email is required");
+        }
+
+        if (collegeRepository.existsByCollegeCodeIgnoreCase(collegeCode)) {
+            throw new BadRequestException("College code already exists: " + collegeCode);
+        }
+
+        if (collegeRepository.existsByNameIgnoreCase(collegeName)) {
+            throw new BadRequestException("College name already exists: " + collegeName);
+        }
+
+        if (userRepository.existsByEmail(email)) {
+            throw new BadRequestException("Email address already in use!");
+        }
+
+        // Atomically create College
+        College college = College.builder()
+                .name(collegeName)
+                .collegeCode(collegeCode)
+                .status("ACTIVE")
+                .contactEmail(email)
+                .build();
+        College savedCollege = collegeRepository.save(college);
+        log.info("Registered college: {} (code: {}) with id: {}", savedCollege.getName(), savedCollege.getCollegeCode(), savedCollege.getId());
+
+        // Atomically create College Admin user linked directly to this college
+        User collegeAdmin = User.builder()
+                .email(email)
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .firstName(request.getFirstName() != null ? request.getFirstName().trim() : "")
+                .lastName(request.getLastName() != null ? request.getLastName().trim() : "")
+                .phoneNumber(request.getPhoneNumber() != null && !request.getPhoneNumber().trim().isEmpty() ? request.getPhoneNumber().trim() : null)
+                .role(Role.ADMIN)
+                .college(savedCollege)
+                .isActive(true)
+                .build();
+
+        userRepository.save(collegeAdmin);
+        log.info("Registered initial College Admin user: {} for college: {}", email, savedCollege.getName());
     }
 
     @Override
@@ -234,13 +344,16 @@ public class AuthService implements AuthUseCase {
                 .map(this::verifyExpiration)
                 .map(RefreshToken::getUser)
                 .map(user -> {
-                    String token = tokenProvider.generateTokenFromUsername(user.getEmail());
+                    String token = tokenProvider.generateTokenForUser(user);
                     return LoginResponse.builder()
                             .accessToken(token)
                             .refreshToken(requestRefreshToken)
                             .email(user.getEmail())
                             .role(user.getRole().name())
                             .name(user.getFirstName() + " " + user.getLastName())
+                            .collegeId(user.getCollege() != null ? user.getCollege().getId() : null)
+                            .collegeName(user.getCollege() != null ? user.getCollege().getName() : null)
+                            .collegeCode(user.getCollege() != null ? user.getCollege().getCollegeCode() : null)
                             .build();
                 })
                 .orElseThrow(() -> new BadRequestException("Refresh token is not in database!"));

@@ -32,9 +32,18 @@ public class RegisterRequest {
     private String role; // STUDENT, DRIVER
 
     // Student fields
+    private String collegeCode;
     private String studentId;
     private String department;
     private String batch;
+
+    public void setCollegeCode(String collegeCode) {
+        this.collegeCode = collegeCode != null ? collegeCode.trim().toUpperCase() : null;
+    }
+
+    public String getCollegeCode() {
+        return this.collegeCode != null ? this.collegeCode.trim().toUpperCase() : null;
+    }
 
     // Driver fields
     private String licenseNumber;

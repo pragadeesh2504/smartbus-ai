@@ -30,13 +30,23 @@ public class JwtTokenProvider {
 
     public String generateToken(Authentication authentication) {
         UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+        return generateTokenForUser(userPrincipal.getUser());
+    }
+
+    public String generateTokenForUser(com.smartbus.domain.model.User user) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
 
-        return Jwts.builder()
-                .subject(userPrincipal.getUsername())
-                .claim("userId", userPrincipal.getId().toString())
-                .claim("role", userPrincipal.getUser().getRole().name())
+        var builder = Jwts.builder()
+                .subject(user.getEmail())
+                .claim("userId", user.getId().toString())
+                .claim("role", user.getRole().name());
+
+        if (user.getCollege() != null && user.getCollege().getId() != null) {
+            builder.claim("collegeId", user.getCollege().getId().toString());
+        }
+
+        return builder
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(jwtSecretKey)
@@ -62,6 +72,32 @@ public class JwtTokenProvider {
                 .parseSignedClaims(token)
                 .getPayload()
                 .getSubject();
+    }
+
+    public String getCollegeIdFromJwt(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(jwtSecretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            return claims.get("collegeId", String.class);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public String getRoleFromJwt(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(jwtSecretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            return claims.get("role", String.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public boolean validateToken(String authToken) {

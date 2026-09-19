@@ -61,12 +61,19 @@ public class AdminRouteController {
             @RequestParam(defaultValue = "routeName") String sortBy,
             @RequestParam(defaultValue = "ASC") String direction,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String status,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Sort sort = Sort.by(Sort.Direction.fromString(direction), sortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
         List<Route> allRoutes = routeRepository.findByDeletedAtIsNull();
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            UUID collegeId = userPrincipal.getCollegeId();
+            allRoutes = allRoutes.stream()
+                    .filter(r -> r.getCollege() != null && collegeId.equals(r.getCollege().getId()))
+                    .collect(Collectors.toList());
+        }
 
         if (search != null && !search.trim().isEmpty()) {
             String lowerSearch = search.toLowerCase();
@@ -102,7 +109,11 @@ public class AdminRouteController {
             @RequestBody RouteDto routeDto,
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
-        if (routeRepository.findByRouteNameAndDeletedAtIsNull(routeDto.getRouteName()).isPresent()) {
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            if (routeRepository.findByCollegeIdAndRouteNameAndDeletedAtIsNull(userPrincipal.getCollegeId(), routeDto.getRouteName()).isPresent()) {
+                throw new BadRequestException("Route name " + routeDto.getRouteName() + " already exists in this college");
+            }
+        } else if (routeRepository.findByRouteNameAndDeletedAtIsNull(routeDto.getRouteName()).isPresent()) {
             throw new BadRequestException("Route name " + routeDto.getRouteName() + " already exists");
         }
 
@@ -112,6 +123,7 @@ public class AdminRouteController {
                 .endPoint(routeDto.getEndPoint())
                 .distance(routeDto.getDistance() > 0 ? routeDto.getDistance() : 0.0)
                 .estimatedDurationMins(routeDto.getEstimatedDurationMins() > 0 ? routeDto.getEstimatedDurationMins() : 0)
+                .college(userPrincipal != null ? userPrincipal.getUser().getCollege() : null)
                 .status("ACTIVE")
                 .startLatitude(routeDto.getStartLatitude())
                 .startLongitude(routeDto.getStartLongitude())
@@ -172,10 +184,13 @@ public class AdminRouteController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<RouteDto>> getRouteById(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<RouteDto>> getRouteById(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
         Route route = routeRepository.findById(id)
                 .filter(r -> r.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + id));
+        validateRouteBelongsToCollege(route, userPrincipal);
         RouteDto routeDto = routeMapper.toDto(route);
         List<RouteStop> routeStops = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(id);
         List<RouteStopDto> stopDtos = routeStops.stream()
@@ -193,14 +208,24 @@ public class AdminRouteController {
 
         Route route = routeRepository.findById(id)
                 .filter(r -> r.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + id));
+        validateRouteBelongsToCollege(route, userPrincipal);
 
-        routeRepository.findByRouteNameAndDeletedAtIsNull(routeDto.getRouteName())
-                .ifPresent(existing -> {
-                    if (!existing.getId().equals(id)) {
-                        throw new BadRequestException("Route name already exists");
-                    }
-                });
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            routeRepository.findByCollegeIdAndRouteNameAndDeletedAtIsNull(userPrincipal.getCollegeId(), routeDto.getRouteName())
+                    .ifPresent(existing -> {
+                        if (!existing.getId().equals(id)) {
+                            throw new BadRequestException("Route name already exists in this college");
+                        }
+                    });
+        } else {
+            routeRepository.findByRouteNameAndDeletedAtIsNull(routeDto.getRouteName())
+                    .ifPresent(existing -> {
+                        if (!existing.getId().equals(id)) {
+                            throw new BadRequestException("Route name already exists");
+                        }
+                    });
+        }
 
         String oldValue = route.getRouteName() + " - " + route.getStatus();
         boolean fromChanged = !route.getStartPoint().equalsIgnoreCase(routeDto.getStartPoint());
@@ -321,7 +346,8 @@ public class AdminRouteController {
 
         Route route = routeRepository.findById(id)
                 .filter(r -> r.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + id));
+        validateRouteBelongsToCollege(route, userPrincipal);
 
         // Overlap / reference validation
         List<Schedule> activeSchedules = scheduleRepository.findByRouteIdAndDeletedAtIsNull(id);
@@ -344,5 +370,13 @@ public class AdminRouteController {
         );
 
         return ResponseEntity.ok(ApiResponse.success("Route deleted successfully"));
+    }
+
+    private void validateRouteBelongsToCollege(Route route, UserPrincipal userPrincipal) {
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            if (route.getCollege() == null || !userPrincipal.getCollegeId().equals(route.getCollege().getId())) {
+                throw new ResourceNotFoundException("Route not found with id: " + route.getId());
+            }
+        }
     }
 }

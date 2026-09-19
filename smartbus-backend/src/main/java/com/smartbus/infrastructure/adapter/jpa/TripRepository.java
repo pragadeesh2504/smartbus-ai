@@ -26,4 +26,11 @@ public interface TripRepository extends JpaRepository<Trip, UUID> {
     List<Trip> findByStartTimeBetween(
             @org.springframework.data.repository.query.Param("startTime") java.time.LocalDateTime startTime,
             @org.springframework.data.repository.query.Param("endTime") java.time.LocalDateTime endTime);
+
+    @Query("SELECT t FROM Trip t WHERE t.college.id = :collegeId AND (t.status = 'EN_ROUTE' OR t.status = 'PAUSED')")
+    List<Trip> findActiveTripsByCollegeId(@org.springframework.data.repository.query.Param("collegeId") UUID collegeId);
+
+    List<Trip> findByCollegeIdAndStatusIn(UUID collegeId, List<String> statuses);
+    Optional<Trip> findByIdAndCollegeId(UUID id, UUID collegeId);
+    long countByCollegeIdAndStatusIn(UUID collegeId, List<String> statuses);
 }

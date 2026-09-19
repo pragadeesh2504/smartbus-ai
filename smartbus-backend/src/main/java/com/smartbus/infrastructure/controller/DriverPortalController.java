@@ -249,6 +249,9 @@ public class DriverPortalController {
         List<DriverScheduleItem> result = new ArrayList<>();
         for (Schedule s : schedMap.values()) {
             if (s.getBus() == null || s.getRoute() == null) continue;
+            if (driver.getCollege() != null && s.getCollege() != null && !driver.getCollege().getId().equals(s.getCollege().getId())) {
+                continue;
+            }
 
             String tripStatus = "UPCOMING";
             UUID activeTripId = null;
@@ -368,6 +371,10 @@ public class DriverPortalController {
             throw new org.springframework.security.access.AccessDeniedException("Schedule does not belong to authenticated driver");
         }
 
+        if (driver.getCollege() != null && schedule.getCollege() != null && !driver.getCollege().getId().equals(schedule.getCollege().getId())) {
+            throw new org.springframework.security.access.AccessDeniedException("Schedule does not belong to driver's college");
+        }
+
         List<BusAssignment> assignments = busAssignmentRepository.findByDriverIdAndStatus(driver.getId(), "ACTIVE");
         BusAssignment assignment = assignments.stream()
                 .filter(a -> a.getSchedule().getId().equals(scheduleId))
@@ -411,6 +418,7 @@ public class DriverPortalController {
                 .bus(bus)
                 .driver(driver)
                 .route(assignment.getRoute())
+                .college(driver.getCollege() != null ? driver.getCollege() : schedule.getCollege())
                 .status("IN_PROGRESS")
                 .startTime(LocalDateTime.now())
                 .actualDeparture(LocalDateTime.now())

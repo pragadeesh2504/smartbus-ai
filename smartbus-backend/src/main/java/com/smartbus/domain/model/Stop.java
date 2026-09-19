@@ -6,7 +6,9 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "stops")
+@Table(name = "stops", uniqueConstraints = {
+    @UniqueConstraint(name = "uq_stops_college_stop_name", columnNames = {"college_id", "stop_name"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -18,7 +20,11 @@ public class Stop {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(name = "stop_name", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "college_id")
+    private College college;
+
+    @Column(name = "stop_name", nullable = false)
     private String stopName;
 
     @Column(nullable = false)

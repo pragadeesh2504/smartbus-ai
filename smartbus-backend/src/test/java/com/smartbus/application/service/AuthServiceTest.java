@@ -32,6 +32,9 @@ public class AuthServiceTest {
     private DriverRepository driverRepository;
 
     @Mock
+    private com.smartbus.infrastructure.adapter.jpa.CollegeRepository collegeRepository;
+
+    @Mock
     private PasswordEncoder passwordEncoder;
 
     @InjectMocks
@@ -51,6 +54,7 @@ public class AuthServiceTest {
         registerRequest.setStudentId("ST-101");
         registerRequest.setDepartment("CSE");
         registerRequest.setBatch("2024");
+        registerRequest.setCollegeCode("CIT");
     }
 
     @Test
@@ -58,10 +62,19 @@ public class AuthServiceTest {
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
         when(passwordEncoder.encode(anyString())).thenReturn("hashed_password");
         
+        com.smartbus.domain.model.College college = com.smartbus.domain.model.College.builder()
+                .id(java.util.UUID.randomUUID())
+                .name("Test College")
+                .collegeCode("CIT")
+                .status("ACTIVE")
+                .build();
+        when(collegeRepository.findByCollegeCodeIgnoreCaseAndStatus("CIT", "ACTIVE")).thenReturn(Optional.of(college));
+
         User mockUser = User.builder()
                 .email(registerRequest.getEmail())
                 .passwordHash("hashed_password")
                 .role(Role.STUDENT)
+                .college(college)
                 .build();
         when(userRepository.save(any(User.class))).thenReturn(mockUser);
 

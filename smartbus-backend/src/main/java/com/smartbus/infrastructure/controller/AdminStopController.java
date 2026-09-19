@@ -61,7 +61,14 @@ public class AdminStopController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<RouteStopDto>>> getStopsByRoute(@PathVariable UUID routeId) {
+    public ResponseEntity<ApiResponse<List<RouteStopDto>>> getStopsByRoute(
+            @PathVariable UUID routeId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        Route route = routeRepository.findById(routeId)
+                .filter(r -> r.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + routeId));
+        validateRouteBelongsToCollege(route, userPrincipal);
+
         List<RouteStop> routeStops = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(routeId);
         List<RouteStopDto> dtos = routeStops.stream()
                 .map(routeStopMapper::toDto)
@@ -77,7 +84,8 @@ public class AdminStopController {
 
         Route route = routeRepository.findById(routeId)
                 .filter(r -> r.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + routeId));
+        validateRouteBelongsToCollege(route, userPrincipal);
 
         StopDto stopDto = routeStopDto.getStop();
         if (stopDto.getLatitude() < -90.0 || stopDto.getLatitude() > 90.0) {
@@ -87,16 +95,30 @@ public class AdminStopController {
             throw new BadRequestException("Longitude must be between -180 and 180 degrees");
         }
 
-        // Check if Stop already exists by name or create a new one
-        Stop stop = stopRepository.findByStopName(stopDto.getStopName())
-                .orElseGet(() -> {
-                    Stop newStop = Stop.builder()
-                            .stopName(stopDto.getStopName())
-                            .latitude(stopDto.getLatitude())
-                            .longitude(stopDto.getLongitude())
-                            .build();
-                    return stopRepository.save(newStop);
-                });
+        // Check if Stop already exists by name in college or create a new one
+        Stop stop;
+        if (route.getCollege() != null) {
+            stop = stopRepository.findByCollegeIdAndStopName(route.getCollege().getId(), stopDto.getStopName().trim())
+                    .orElseGet(() -> {
+                        Stop newStop = Stop.builder()
+                                .stopName(stopDto.getStopName().trim())
+                                .latitude(stopDto.getLatitude())
+                                .longitude(stopDto.getLongitude())
+                                .college(route.getCollege())
+                                .build();
+                        return stopRepository.save(newStop);
+                    });
+        } else {
+            stop = stopRepository.findByStopName(stopDto.getStopName().trim())
+                    .orElseGet(() -> {
+                        Stop newStop = Stop.builder()
+                                .stopName(stopDto.getStopName().trim())
+                                .latitude(stopDto.getLatitude())
+                                .longitude(stopDto.getLongitude())
+                                .build();
+                        return stopRepository.save(newStop);
+                    });
+        }
 
         List<RouteStop> existing = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(routeId);
         int nextSeq = existing.isEmpty() ? 1 : existing.get(existing.size() - 1).getSequenceNumber() + 1;
@@ -137,7 +159,9 @@ public class AdminStopController {
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Route route = routeRepository.findById(routeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+                .filter(r -> r.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + routeId));
+        validateRouteBelongsToCollege(route, userPrincipal);
 
         List<RouteStop> routeStops = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(routeId);
         RouteStop target = routeStops.stream()
@@ -191,7 +215,8 @@ public class AdminStopController {
 
         Route route = routeRepository.findById(routeId)
                 .filter(r -> r.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + routeId));
+        validateRouteBelongsToCollege(route, userPrincipal);
 
         // Delete old relations and flush to clear sequence numbers
         List<RouteStop> existing = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(routeId);
@@ -212,15 +237,29 @@ public class AdminStopController {
                 throw new BadRequestException("Longitude must be between -180 and 180 degrees");
             }
 
-            Stop stop = stopRepository.findByStopName(stopDto.getStopName().trim())
-                    .orElseGet(() -> {
-                        Stop newStop = Stop.builder()
-                                .stopName(stopDto.getStopName().trim())
-                                .latitude(stopDto.getLatitude())
-                                .longitude(stopDto.getLongitude())
-                                .build();
-                        return stopRepository.save(newStop);
-                    });
+            Stop stop;
+            if (route.getCollege() != null) {
+                stop = stopRepository.findByCollegeIdAndStopName(route.getCollege().getId(), stopDto.getStopName().trim())
+                        .orElseGet(() -> {
+                            Stop newStop = Stop.builder()
+                                    .stopName(stopDto.getStopName().trim())
+                                    .latitude(stopDto.getLatitude())
+                                    .longitude(stopDto.getLongitude())
+                                    .college(route.getCollege())
+                                    .build();
+                            return stopRepository.save(newStop);
+                        });
+            } else {
+                stop = stopRepository.findByStopName(stopDto.getStopName().trim())
+                        .orElseGet(() -> {
+                            Stop newStop = Stop.builder()
+                                    .stopName(stopDto.getStopName().trim())
+                                    .latitude(stopDto.getLatitude())
+                                    .longitude(stopDto.getLongitude())
+                                    .build();
+                            return stopRepository.save(newStop);
+                        });
+            }
 
             // Update coordinates if provided
             stop.setLatitude(stopDto.getLatitude());
@@ -268,7 +307,9 @@ public class AdminStopController {
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Route route = routeRepository.findById(routeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+                .filter(r -> r.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + routeId));
+        validateRouteBelongsToCollege(route, userPrincipal);
 
         List<RouteStop> existing = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(routeId);
 
@@ -335,7 +376,9 @@ public class AdminStopController {
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Route route = routeRepository.findById(routeId)
-                .orElseThrow(() -> new ResourceNotFoundException("Route not found"));
+                .filter(r -> r.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("Route not found with id: " + routeId));
+        validateRouteBelongsToCollege(route, userPrincipal);
 
         List<RouteStop> existing = routeStopRepository.findByRouteIdOrderBySequenceNumberAsc(routeId);
         RouteStop toRemove = existing.stream()
@@ -372,5 +415,13 @@ public class AdminStopController {
         touchRouteAndBroadcast(route);
 
         return ResponseEntity.ok(ApiResponse.success("Stop removed from route and sequences recalculated"));
+    }
+
+    private void validateRouteBelongsToCollege(Route route, UserPrincipal userPrincipal) {
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            if (route.getCollege() == null || !userPrincipal.getCollegeId().equals(route.getCollege().getId())) {
+                throw new ResourceNotFoundException("Route not found with id: " + route.getId());
+            }
+        }
     }
 }

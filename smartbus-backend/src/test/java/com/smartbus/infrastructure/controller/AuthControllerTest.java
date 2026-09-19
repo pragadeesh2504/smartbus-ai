@@ -86,7 +86,7 @@ public class AuthControllerTest {
     void testGoogleLogin_Success() {
         when(request.getHeader("X-Forwarded-For")).thenReturn("192.168.1.50");
         when(rateLimitService.checkGoogleAuthLimit("192.168.1.50")).thenReturn(RateLimitResult.allow());
-        when(authUseCase.loginWithGoogle(eq("valid-token"), any())).thenReturn(loginResponse);
+        when(authUseCase.loginWithGoogle(eq("valid-token"), any(), any())).thenReturn(loginResponse);
 
         com.smartbus.infrastructure.dto.GoogleLoginRequest googleReq = new com.smartbus.infrastructure.dto.GoogleLoginRequest("valid-token", "DRIVER");
         ResponseEntity<LoginResponse> response = authController.authenticateGoogleUser(googleReq, request);

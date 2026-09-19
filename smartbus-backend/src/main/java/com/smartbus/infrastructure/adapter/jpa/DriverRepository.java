@@ -22,4 +22,11 @@ public interface DriverRepository extends JpaRepository<Driver, UUID> {
 
     @Query("SELECT COUNT(d) FROM Driver d WHERE d.user IS NOT NULL AND d.user.deletedAt IS NULL AND (UPPER(d.approvalStatus) = 'APPROVED' OR d.isApproved = true)")
     long countApprovedActiveDrivers();
+
+    List<Driver> findByCollegeId(UUID collegeId);
+    Optional<Driver> findByIdAndCollegeId(UUID id, UUID collegeId);
+    long countByCollegeId(UUID collegeId);
+
+    @Query("SELECT COUNT(d) FROM Driver d WHERE d.college.id = :collegeId AND d.user IS NOT NULL AND d.user.deletedAt IS NULL AND (UPPER(d.approvalStatus) = 'APPROVED' OR d.isApproved = true)")
+    long countApprovedActiveDriversByCollegeId(@org.springframework.data.repository.query.Param("collegeId") UUID collegeId);
 }

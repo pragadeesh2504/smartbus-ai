@@ -9,4 +9,9 @@ import java.util.UUID;
 @Repository
 public interface StopRepository extends JpaRepository<Stop, UUID> {
     Optional<Stop> findByStopName(String stopName);
+
+    java.util.List<Stop> findByCollegeId(UUID collegeId);
+    Optional<Stop> findByCollegeIdAndStopName(UUID collegeId, String stopName);
+    Optional<Stop> findByIdAndCollegeId(UUID id, UUID collegeId);
+    boolean existsByCollegeIdAndStopName(UUID collegeId, String stopName);
 }

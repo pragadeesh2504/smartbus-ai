@@ -4,13 +4,16 @@ import com.smartbus.infrastructure.dto.LoginRequest;
 import com.smartbus.infrastructure.dto.LoginResponse;
 import com.smartbus.infrastructure.dto.RegisterRequest;
 import com.smartbus.infrastructure.dto.RefreshTokenRequest;
+import com.smartbus.infrastructure.dto.RegisterCollegeAdminRequest;
 import com.smartbus.infrastructure.dto.ResetPasswordRequest;
 
 public interface AuthUseCase {
     LoginResponse login(LoginRequest loginRequest);
     LoginResponse loginWithGoogle(String idToken);
     LoginResponse loginWithGoogle(String idToken, String selectedRole);
+    LoginResponse loginWithGoogle(String idToken, String selectedRole, String collegeCode);
     void register(RegisterRequest registerRequest);
+    void registerCollegeAdmin(RegisterCollegeAdminRequest request);
     LoginResponse refreshToken(RefreshTokenRequest request);
     void forgotPassword(String email);
     boolean verifyOtp(String email, String otp);

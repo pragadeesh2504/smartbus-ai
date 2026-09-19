@@ -46,7 +46,8 @@ public class AdminDriverController {
             @RequestParam(defaultValue = "licenseNumber") String sortBy,
             @RequestParam(defaultValue = "ASC") String direction,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String approvalStatus) {
+            @RequestParam(required = false) String approvalStatus,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Sort sort = Sort.by(Sort.Direction.fromString(direction), sortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
@@ -54,6 +55,13 @@ public class AdminDriverController {
         List<Driver> allDrivers = driverRepository.findAll().stream()
                 .filter(d -> d.getUser() != null && d.getUser().getDeletedAt() == null)
                 .collect(Collectors.toList());
+
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            UUID collegeId = userPrincipal.getCollegeId();
+            allDrivers = allDrivers.stream()
+                    .filter(d -> d.getCollege() != null && collegeId.equals(d.getCollege().getId()))
+                    .collect(Collectors.toList());
+        }
 
         if (search != null && !search.trim().isEmpty()) {
             String lowerSearch = search.toLowerCase();
@@ -134,8 +142,9 @@ public class AdminDriverController {
             existing.setPhoneNumber(driverDto.getPhone() != null ? driverDto.getPhone() : "9876543210");
             existing.setPasswordHash(passwordEncoder.encode(initialPassword));
             existing.setRole(Role.DRIVER);
+            existing.setCollege(userPrincipal != null ? userPrincipal.getUser().getCollege() : null);
             user = userRepository.save(existing);
-            driver = driverRepository.findByUser(user).orElse(Driver.builder().user(user).build());
+            driver = driverRepository.findByUser(user).orElse(Driver.builder().user(user).college(userPrincipal != null ? userPrincipal.getUser().getCollege() : null).build());
         } else {
             if (driverRepository.findByLicenseNumber(driverDto.getLicenseNumber()).isPresent()) {
                 throw new BadRequestException("License number " + driverDto.getLicenseNumber() + " already exists");
@@ -153,12 +162,17 @@ public class AdminDriverController {
                     .lastName(lastName)
                     .phoneNumber(driverDto.getPhone() != null ? driverDto.getPhone() : "9876543210")
                     .role(Role.DRIVER)
+                    .college(userPrincipal != null ? userPrincipal.getUser().getCollege() : null)
                     .isActive(true)
                     .build();
             user = userRepository.save(user);
-            driver = Driver.builder().user(user).build();
+            driver = Driver.builder()
+                    .user(user)
+                    .college(userPrincipal != null ? userPrincipal.getUser().getCollege() : null)
+                    .build();
         }
 
+        driver.setCollege(userPrincipal != null ? userPrincipal.getUser().getCollege() : null);
         driver.setLicenseNumber(driverDto.getLicenseNumber());
         driver.setEmployeeId(driverDto.getEmployeeId());
         driver.setLicenseExpiry(driverDto.getLicenseExpiry());
@@ -191,7 +205,8 @@ public class AdminDriverController {
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Driver driver = driverRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Driver not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Driver not found with id: " + id));
+        validateDriverBelongsToCollege(driver, userPrincipal);
 
         User user = driver.getUser();
 
@@ -269,7 +284,8 @@ public class AdminDriverController {
         }
 
         Driver driver = driverRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Driver not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Driver not found with id: " + id));
+        validateDriverBelongsToCollege(driver, userPrincipal);
 
         User user = driver.getUser();
         if (user == null || user.getDeletedAt() != null) {
@@ -314,7 +330,8 @@ public class AdminDriverController {
         }
 
         Driver driver = driverRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Driver not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Driver not found with id: " + id));
+        validateDriverBelongsToCollege(driver, userPrincipal);
 
         String oldApproval = driver.getApprovalStatus();
         driver.setApprovalStatus(resolvedStatus.toUpperCase());
@@ -342,7 +359,8 @@ public class AdminDriverController {
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Driver driver = driverRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Driver not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Driver not found with id: " + id));
+        validateDriverBelongsToCollege(driver, userPrincipal);
 
         String oldStatus = driver.getStatus();
         driver.setStatus(status.toUpperCase());
@@ -368,7 +386,8 @@ public class AdminDriverController {
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Driver driver = driverRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Driver not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Driver not found with id: " + id));
+        validateDriverBelongsToCollege(driver, userPrincipal);
 
         User user = driver.getUser();
         if (user.getDeletedAt() != null) {
@@ -424,5 +443,13 @@ public class AdminDriverController {
                 .employeeId(driver.getEmployeeId())
                 .averageRating(driver.getAverageRating())
                 .build();
+    }
+
+    private void validateDriverBelongsToCollege(Driver driver, UserPrincipal userPrincipal) {
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            if (driver.getCollege() == null || !userPrincipal.getCollegeId().equals(driver.getCollege().getId())) {
+                throw new ResourceNotFoundException("Driver not found with id: " + driver.getId());
+            }
+        }
     }
 }

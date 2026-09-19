@@ -2,10 +2,12 @@ package com.smartbus.application.service;
 
 import com.smartbus.domain.exception.BadRequestException;
 import com.smartbus.domain.exception.ResourceNotFoundException;
+import com.smartbus.domain.model.College;
+import com.smartbus.domain.model.Driver;
 import com.smartbus.domain.model.PasswordResetToken;
 import com.smartbus.domain.model.Role;
 import com.smartbus.domain.model.User;
-import com.smartbus.domain.model.Driver;
+import com.smartbus.infrastructure.adapter.jpa.CollegeRepository;
 import com.smartbus.infrastructure.adapter.jpa.DriverRepository;
 import com.smartbus.infrastructure.adapter.jpa.PasswordResetTokenRepository;
 import com.smartbus.infrastructure.adapter.jpa.RefreshTokenRepository;
@@ -71,6 +73,9 @@ public class AuthEnhancementTest {
     @Mock
     private AuthenticationManager authenticationManager;
 
+    @Mock
+    private CollegeRepository collegeRepository;
+
     @InjectMocks
     private AuthService authService;
 
@@ -78,11 +83,19 @@ public class AuthEnhancementTest {
     private User activeDriverUser;
     private User activeStudentUser;
     private User inactiveUser;
+    private College testCollege;
 
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(authService, "frontendUrl", "http://localhost:5173");
         ReflectionTestUtils.setField(authService, "refreshTokenDurationMs", 604800000L);
+
+        testCollege = College.builder()
+                .id(UUID.randomUUID())
+                .name("Chennai Institute of Technology")
+                .collegeCode("CIT")
+                .status("ACTIVE")
+                .build();
 
         activeAdminUser = User.builder()
                 .id(UUID.randomUUID())
@@ -113,6 +126,7 @@ public class AuthEnhancementTest {
                 .lastName("Sharma")
                 .phoneNumber("+919876501234")
                 .role(Role.STUDENT)
+                .college(testCollege)
                 .isActive(true)
                 .passwordHash("hashed_pw")
                 .build();
@@ -124,6 +138,7 @@ public class AuthEnhancementTest {
                 .lastName("User")
                 .phoneNumber("+919876599999")
                 .role(Role.STUDENT)
+                .college(testCollege)
                 .isActive(false)
                 .passwordHash("hashed_pw")
                 .build();
@@ -138,6 +153,7 @@ public class AuthEnhancementTest {
         UserPrincipal principal = new UserPrincipal(activeStudentUser);
         Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
         when(authenticationManager.authenticate(any())).thenReturn(auth);
+        when(collegeRepository.findByCollegeCodeIgnoreCaseAndStatus("CIT", "ACTIVE")).thenReturn(Optional.of(testCollege));
         when(tokenProvider.generateToken(auth)).thenReturn("jwt-student");
         when(refreshTokenRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -145,6 +161,7 @@ public class AuthEnhancementTest {
                 .email("student@college.edu")
                 .password("Student@123")
                 .role("STUDENT")
+                .collegeCode("CIT")
                 .build();
 
         LoginResponse resp = authService.login(req);
@@ -267,7 +284,7 @@ public class AuthEnhancementTest {
                 .thenReturn(new GoogleUserInfo("driver.assigned@gmail.com", "Ramesh Kumar", true, "google-sub-123"));
         when(userRepository.findByEmailAndDeletedAtIsNull("driver.assigned@gmail.com"))
                 .thenReturn(Optional.of(activeDriverUser));
-        when(tokenProvider.generateTokenFromUsername("driver.assigned@gmail.com"))
+        when(tokenProvider.generateTokenForUser(activeDriverUser))
                 .thenReturn("mock-jwt-driver");
         when(refreshTokenRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -282,15 +299,17 @@ public class AuthEnhancementTest {
 
     @Test
     void testGoogleLogin_ValidGoogleIdentity_MatchingStudentRole_Passes() {
+        when(collegeRepository.findByCollegeCodeIgnoreCaseAndStatus("CIT", "ACTIVE"))
+                .thenReturn(Optional.of(testCollege));
         when(googleAuthService.verifyToken("valid-google-token-student"))
                 .thenReturn(new GoogleUserInfo("student@college.edu", "Priya Sharma", true, "google-sub-456"));
         when(userRepository.findByEmailAndDeletedAtIsNull("student@college.edu"))
                 .thenReturn(Optional.of(activeStudentUser));
-        when(tokenProvider.generateTokenFromUsername("student@college.edu"))
+        when(tokenProvider.generateTokenForUser(activeStudentUser))
                 .thenReturn("mock-jwt-student");
         when(refreshTokenRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        LoginResponse response = authService.loginWithGoogle("valid-google-token-student", "STUDENT");
+        LoginResponse response = authService.loginWithGoogle("valid-google-token-student", "STUDENT", "CIT");
 
         assertNotNull(response);
         assertEquals("STUDENT", response.getRole());

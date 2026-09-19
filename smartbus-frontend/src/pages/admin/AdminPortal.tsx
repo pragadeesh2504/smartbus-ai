@@ -130,6 +130,19 @@ export const AdminPortal: React.FC = () => {
         <header className="h-16 bg-white border-b border-brandBorder flex items-center justify-between px-6 shrink-0 z-10">
           <div className="flex items-center gap-3">
             <h1 className="font-bold text-lg text-brandNavy tracking-tight">{getHeaderTitle()}</h1>
+            {user?.collegeName && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brandBlue/10 text-brandBlue border border-brandBlue/20">
+                {user.collegeName} ({user.collegeCode})
+              </span>
+            )}
+            {user?.role === 'SUPER_ADMIN' && (
+              <Link
+                to="/super-admin"
+                className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200 hover:bg-purple-200 transition-colors"
+              >
+                Super Admin Control Plane →
+              </Link>
+            )}
           </div>
 
           <div className="flex items-center gap-4">

@@ -230,6 +230,7 @@ public class StudentPortalTest {
     @Test
     public void testGetBusStops_Success() {
         when(studentRepository.findByUser(any())).thenReturn(Optional.of(student));
+        when(busRepository.findById(bus.getId())).thenReturn(Optional.of(bus));
         when(tripRepository.findByBusIdAndStatusIn(any(), any())).thenReturn(Collections.emptyList().isEmpty() ? Optional.of(trip) : Optional.empty());
         
         RouteStop rs = RouteStop.builder()

@@ -49,8 +49,15 @@ public class AdminBusController {
     private final com.smartbus.infrastructure.mapper.RouteStopMapper routeStopMapper;
 
     @GetMapping("/active-fleet")
-    public ResponseEntity<ApiResponse<List<com.smartbus.infrastructure.dto.ActiveBusFleetDto>>> getActiveFleet() {
-        List<Trip> activeTrips = tripRepository.findByStatusIn(Arrays.asList("IN_PROGRESS", "PAUSED"));
+    public ResponseEntity<ApiResponse<List<com.smartbus.infrastructure.dto.ActiveBusFleetDto>>> getActiveFleet(
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        List<Trip> activeTrips = tripRepository.findByStatusIn(Arrays.asList("IN_PROGRESS", "PAUSED", "EN_ROUTE"));
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            UUID collegeId = userPrincipal.getCollegeId();
+            activeTrips = activeTrips.stream()
+                    .filter(t -> t.getCollege() != null && collegeId.equals(t.getCollege().getId()))
+                    .collect(Collectors.toList());
+        }
         List<com.smartbus.infrastructure.dto.ActiveBusFleetDto> fleet = new ArrayList<>();
 
         for (Trip trip : activeTrips) {
@@ -224,12 +231,19 @@ public class AdminBusController {
             @RequestParam(defaultValue = "busNumber") String sortBy,
             @RequestParam(defaultValue = "ASC") String direction,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String status,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
         Sort sort = Sort.by(Sort.Direction.fromString(direction), sortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
         List<Bus> allBuses = busRepository.findByDeletedAtIsNull();
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            UUID collegeId = userPrincipal.getCollegeId();
+            allBuses = allBuses.stream()
+                    .filter(b -> b.getCollege() != null && collegeId.equals(b.getCollege().getId()))
+                    .collect(Collectors.toList());
+        }
 
         // Apply filters in memory for flexibility
         if (search != null && !search.trim().isEmpty()) {
@@ -267,7 +281,11 @@ public class AdminBusController {
             @RequestBody BusDto busDto,
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
 
-        if (busRepository.findByBusNumberAndDeletedAtIsNull(busDto.getBusNumber()).isPresent()) {
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            if (busRepository.findByCollegeIdAndBusNumberAndDeletedAtIsNull(userPrincipal.getCollegeId(), busDto.getBusNumber()).isPresent()) {
+                throw new BadRequestException("Bus number " + busDto.getBusNumber() + " already exists in this college");
+            }
+        } else if (busRepository.findByBusNumberAndDeletedAtIsNull(busDto.getBusNumber()).isPresent()) {
             throw new BadRequestException("Bus number " + busDto.getBusNumber() + " already exists");
         }
 
@@ -286,6 +304,7 @@ public class AdminBusController {
                 .busCode(busCode)
                 .model(busDto.getModel() != null ? busDto.getModel() : "Default Model")
                 .capacity(busDto.getCapacity() > 0 ? busDto.getCapacity() : 40)
+                .college(userPrincipal != null ? userPrincipal.getUser().getCollege() : null)
                 .status("ACTIVE")
                 .build();
 
@@ -314,10 +333,13 @@ public class AdminBusController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<BusDto>> getBusById(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<BusDto>> getBusById(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
         Bus bus = busRepository.findById(id)
                 .filter(b -> b.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("Bus not found with id: " + id));
+        validateBusBelongsToCollege(bus, userPrincipal);
         return ResponseEntity.ok(ApiResponse.success("Bus retrieved successfully", mapToDto(bus)));
     }
 
@@ -330,14 +352,24 @@ public class AdminBusController {
         Bus bus = busRepository.findById(id)
                 .filter(b -> b.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("Bus not found with id: " + id));
+        validateBusBelongsToCollege(bus, userPrincipal);
 
         // Duplicate validations
-        busRepository.findByBusNumberAndDeletedAtIsNull(busDto.getBusNumber())
-                .ifPresent(existing -> {
-                    if (!existing.getId().equals(id)) {
-                        throw new BadRequestException("Bus number already exists");
-                    }
-                });
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            busRepository.findByCollegeIdAndBusNumberAndDeletedAtIsNull(userPrincipal.getCollegeId(), busDto.getBusNumber())
+                    .ifPresent(existing -> {
+                        if (!existing.getId().equals(id)) {
+                            throw new BadRequestException("Bus number already exists in this college");
+                        }
+                    });
+        } else {
+            busRepository.findByBusNumberAndDeletedAtIsNull(busDto.getBusNumber())
+                    .ifPresent(existing -> {
+                        if (!existing.getId().equals(id)) {
+                            throw new BadRequestException("Bus number already exists");
+                        }
+                    });
+        }
 
         if (busDto.getRegistrationNumber() != null) {
             busRepository.findByRegistrationNumberAndDeletedAtIsNull(busDto.getRegistrationNumber())
@@ -394,6 +426,7 @@ public class AdminBusController {
         Bus bus = busRepository.findById(id)
                 .filter(b -> b.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("Bus not found with id: " + id));
+        validateBusBelongsToCollege(bus, userPrincipal);
 
         String oldStatus = bus.getStatus();
         bus.setStatus(status.toUpperCase());
@@ -421,6 +454,7 @@ public class AdminBusController {
         Bus bus = busRepository.findById(id)
                 .filter(b -> b.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("Bus not found with id: " + id));
+        validateBusBelongsToCollege(bus, userPrincipal);
 
         // Check active trips
         Optional<Trip> activeTrip = tripRepository.findByBusIdAndStatusIn(id, Arrays.asList("EN_ROUTE", "IN_PROGRESS", "PAUSED"));
@@ -453,10 +487,13 @@ public class AdminBusController {
     }
 
     @GetMapping("/{id}/qr")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getQrCode(@PathVariable UUID id) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getQrCode(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
         Bus bus = busRepository.findById(id)
                 .filter(b -> b.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Bus not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Bus not found with id: " + id));
+        validateBusBelongsToCollege(bus, userPrincipal);
 
         BusQrToken activeToken = busQrTokenRepository.findByBusIdAndIsActiveTrue(id)
                 .orElseGet(() -> generateNewQrToken(bus));
@@ -479,7 +516,8 @@ public class AdminBusController {
 
         Bus bus = busRepository.findById(id)
                 .filter(b -> b.getDeletedAt() == null)
-                .orElseThrow(() -> new ResourceNotFoundException("Bus not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Bus not found with id: " + id));
+        validateBusBelongsToCollege(bus, userPrincipal);
 
         // Revoke active token
         busQrTokenRepository.findByBusIdAndIsActiveTrue(id).ifPresent(token -> {
@@ -554,5 +592,13 @@ public class AdminBusController {
                 .currentLongitude(bus.getCurrentLongitude())
                 .lastUpdated(bus.getLastUpdated())
                 .build();
+    }
+
+    private void validateBusBelongsToCollege(Bus bus, UserPrincipal userPrincipal) {
+        if (userPrincipal != null && userPrincipal.getCollegeId() != null) {
+            if (bus.getCollege() == null || !userPrincipal.getCollegeId().equals(bus.getCollege().getId())) {
+                throw new ResourceNotFoundException("Bus not found with id: " + bus.getId());
+            }
+        }
     }
 }

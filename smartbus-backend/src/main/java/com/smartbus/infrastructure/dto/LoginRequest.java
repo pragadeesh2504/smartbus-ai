@@ -20,6 +20,16 @@ public class LoginRequest {
     private String password;
 
     private String role;
+    private String collegeCode;
+
+    @JsonSetter("collegeCode")
+    public void setCollegeCode(String collegeCode) {
+        this.collegeCode = collegeCode != null ? collegeCode.trim().toUpperCase() : null;
+    }
+
+    public String getCollegeCode() {
+        return collegeCode != null ? collegeCode.trim().toUpperCase() : null;
+    }
 
     @JsonSetter("email")
     public void setEmail(String email) {

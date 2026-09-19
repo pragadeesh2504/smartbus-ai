@@ -14,4 +14,10 @@ public class GoogleLoginRequest {
     private String idToken;
 
     private String role;
+    private String collegeCode;
+
+    public GoogleLoginRequest(String idToken, String role) {
+        this.idToken = idToken;
+        this.role = role;
+    }
 }

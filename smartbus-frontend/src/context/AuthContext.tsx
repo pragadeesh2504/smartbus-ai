@@ -1,20 +1,24 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 
-interface User {
+export interface User {
   email: string;
   role: string;
   name: string;
+  collegeId?: string | null;
+  collegeName?: string | null;
+  collegeCode?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
   accessToken: string | null;
   loading: boolean;
-  login: (email: string, password: string, role?: string) => Promise<void>;
-  loginWithGoogle: (idToken: string, role?: string) => Promise<void>;
+  login: (email: string, password: string, role?: string, collegeCode?: string) => Promise<void>;
+  loginWithGoogle: (idToken: string, role?: string, collegeCode?: string) => Promise<void>;
   logout: () => void;
   register: (data: any) => Promise<void>;
+  updateUser: (partial: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -38,12 +42,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Attempt to refresh
         try {
           const res = await axios.post('/api/auth/refresh', { refreshToken: savedRefresh });
-          const { accessToken, email, role, name } = res.data;
+          const { accessToken, email, role, name, collegeId, collegeName, collegeCode } = res.data;
           setAccessToken(accessToken);
-          const newUser = { email, role, name };
+          const newUser: User = { email, role, name, collegeId, collegeName, collegeCode };
           setUser(newUser);
           localStorage.setItem('accessToken', accessToken);
           localStorage.setItem('user', JSON.stringify(newUser));
+          if (collegeId) localStorage.setItem('collegeId', collegeId);
           axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
         } catch (e) {
           localStorage.removeItem('refreshToken');
@@ -64,31 +69,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const login = async (email: string, password: string, role?: string) => {
-    const res = await axios.post('/api/auth/login', { email, password, role });
-    const { accessToken, refreshToken, role: returnedRole, name } = res.data;
+  const login = async (email: string, password: string, role?: string, collegeCode?: string) => {
+    const res = await axios.post('/api/auth/login', {
+      email,
+      password,
+      role,
+      collegeCode: collegeCode ? collegeCode.trim().toUpperCase() : undefined
+    });
+    const { accessToken, refreshToken, role: returnedRole, name, collegeId, collegeName, collegeCode: returnedCode } = res.data;
 
     setAccessToken(accessToken);
-    const newUser = { email, role: returnedRole, name };
+    const newUser: User = { email, role: returnedRole, name, collegeId, collegeName, collegeCode: returnedCode };
     setUser(newUser);
     
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
     localStorage.setItem('user', JSON.stringify(newUser));
+    if (collegeId) {
+      localStorage.setItem('collegeId', collegeId);
+    } else {
+      localStorage.removeItem('collegeId');
+    }
     axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
   };
 
-  const loginWithGoogle = async (idToken: string, role?: string) => {
-    const res = await axios.post('/api/auth/google', { idToken, role });
-    const { accessToken, refreshToken, role: returnedRole, name, email } = res.data;
+  const loginWithGoogle = async (idToken: string, role?: string, collegeCode?: string) => {
+    const res = await axios.post('/api/auth/google', {
+      idToken,
+      role,
+      collegeCode: collegeCode ? collegeCode.trim().toUpperCase() : undefined
+    });
+    const { accessToken, refreshToken, role: returnedRole, name, email, collegeId, collegeName, collegeCode: returnedCode } = res.data;
 
     setAccessToken(accessToken);
-    const newUser = { email, role: returnedRole, name };
+    const newUser: User = { email, role: returnedRole, name, collegeId, collegeName, collegeCode: returnedCode };
     setUser(newUser);
 
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
     localStorage.setItem('user', JSON.stringify(newUser));
+    if (collegeId) {
+      localStorage.setItem('collegeId', collegeId);
+    } else {
+      localStorage.removeItem('collegeId');
+    }
     axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
   };
 
@@ -98,6 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('collegeId');
     delete axios.defaults.headers.common['Authorization'];
   };
 
@@ -105,8 +130,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await axios.post('/api/auth/register', data);
   };
 
+  const updateUser = (partial: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...partial };
+      localStorage.setItem('user', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, loading, login, loginWithGoogle, logout, register }}>
+    <AuthContext.Provider value={{ user, accessToken, loading, login, loginWithGoogle, logout, register, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

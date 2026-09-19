@@ -7,7 +7,9 @@ import java.util.Set;
 import java.util.HashSet;
 
 @Entity
-@Table(name = "students")
+@Table(name = "students", uniqueConstraints = {
+    @UniqueConstraint(name = "uq_students_college_student_id", columnNames = {"college_id", "student_id"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,11 +21,15 @@ public class Student {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "college_id")
+    private College college;
+
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
-    @Column(name = "student_id", nullable = false, unique = true)
+    @Column(name = "student_id", nullable = false)
     private String studentId;
 
     @Column(nullable = false)

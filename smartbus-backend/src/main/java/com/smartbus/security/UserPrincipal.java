@@ -60,4 +60,20 @@ public class UserPrincipal implements UserDetails {
     public boolean isEnabled() {
         return user.isActive();
     }
+
+    public UUID getCollegeId() {
+        return user.getCollege() != null ? user.getCollege().getId() : null;
+    }
+
+    public String getCollegeName() {
+        return user.getCollege() != null ? user.getCollege().getName() : null;
+    }
+
+    public String getCollegeCode() {
+        return user.getCollege() != null ? user.getCollege().getCollegeCode() : null;
+    }
+
+    public boolean isSuperAdmin() {
+        return user.getRole() == com.smartbus.domain.model.Role.SUPER_ADMIN;
+    }
 }

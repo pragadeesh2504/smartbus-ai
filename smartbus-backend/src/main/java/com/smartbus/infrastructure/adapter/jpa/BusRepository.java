@@ -14,5 +14,13 @@ public interface BusRepository extends JpaRepository<Bus, UUID> {
     Optional<Bus> findByBusCodeAndDeletedAtIsNull(String busCode);
     Optional<Bus> findByRegistrationNumberAndDeletedAtIsNull(String registrationNumber);
     List<Bus> findByDeletedAtIsNull();
+    long countByDeletedAtIsNull();
     List<Bus> findByStatusAndDeletedAtIsNull(String status);
+
+    List<Bus> findByCollegeIdAndDeletedAtIsNull(UUID collegeId);
+    List<Bus> findByCollegeIdAndStatusAndDeletedAtIsNull(UUID collegeId, String status);
+    Optional<Bus> findByCollegeIdAndBusNumberAndDeletedAtIsNull(UUID collegeId, String busNumber);
+    Optional<Bus> findByIdAndCollegeIdAndDeletedAtIsNull(UUID id, UUID collegeId);
+    long countByCollegeIdAndDeletedAtIsNull(UUID collegeId);
+    boolean existsByCollegeIdAndBusNumberAndDeletedAtIsNull(UUID collegeId, String busNumber);
 }

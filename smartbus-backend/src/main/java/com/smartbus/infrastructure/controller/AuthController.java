@@ -6,6 +6,7 @@ import com.smartbus.infrastructure.dto.LoginRequest;
 import com.smartbus.infrastructure.dto.LoginResponse;
 import com.smartbus.infrastructure.dto.RegisterRequest;
 import com.smartbus.infrastructure.dto.RefreshTokenRequest;
+import com.smartbus.infrastructure.dto.RegisterCollegeAdminRequest;
 import com.smartbus.security.ratelimit.RateLimitResult;
 import com.smartbus.security.ratelimit.RateLimitService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,13 +44,30 @@ public class AuthController {
         if (!rateLimitResult.isAllowed()) {
             throw new RateLimitExceededException("Too many login attempts. Please try again later.", rateLimitResult.getRetryAfterSeconds());
         }
-        return ResponseEntity.ok(authUseCase.loginWithGoogle(googleRequest.getIdToken(), googleRequest.getRole()));
+        return ResponseEntity.ok(authUseCase.loginWithGoogle(googleRequest.getIdToken(), googleRequest.getRole(), googleRequest.getCollegeCode()));
     }
 
     @PostMapping("/register")
     public ResponseEntity<String> registerUser(@Valid @RequestBody RegisterRequest registerRequest) {
         authUseCase.register(registerRequest);
         return ResponseEntity.ok("User registered successfully");
+    }
+
+    @PostMapping({"/register/admin", "/register-admin", "/register/college", "/register-college"})
+    public ResponseEntity<java.util.Map<String, Object>> registerCollegeAdmin(
+            @Valid @RequestBody RegisterCollegeAdminRequest request,
+            HttpServletRequest servletRequest) {
+        String clientIp = getClientIp(servletRequest);
+        RateLimitResult rateLimitResult = rateLimitService.checkAdminRegistrationLimit(clientIp);
+        if (!rateLimitResult.isAllowed()) {
+            throw new RateLimitExceededException("Too many college registration attempts. Please try again later.", rateLimitResult.getRetryAfterSeconds());
+        }
+        authUseCase.registerCollegeAdmin(request);
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(java.util.Map.of(
+                        "message", "College and Administrator registered successfully",
+                        "collegeCode", request.getCollegeCode().trim().toUpperCase()
+                ));
     }
 
     @PostMapping("/refresh")

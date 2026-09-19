@@ -6,7 +6,9 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "routes")
+@Table(name = "routes", uniqueConstraints = {
+    @UniqueConstraint(name = "uq_routes_college_route_name", columnNames = {"college_id", "route_name"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -18,7 +20,11 @@ public class Route {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(name = "route_name", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "college_id")
+    private College college;
+
+    @Column(name = "route_name", nullable = false)
     private String routeName;
 
     @Column(name = "start_point", nullable = false)
